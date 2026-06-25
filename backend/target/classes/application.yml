@@ -1,0 +1,29 @@
+server:
+  port: 8081
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/Hospital
+    username: postgres
+    password: ftn
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          lob:
+            non_contextual_creation: true
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+careafter:
+  jwt:
+    secret: c3VwZXJzZWNyZXRrZXlmb3JjYXJlYWZ0ZXJhcHBsaWNhdGlvbjEyMzQ1Ng==
+    expiration-ms: 86400000
+
+logging:
+  level:
+    org.springframework: INFO
