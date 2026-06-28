@@ -1,5 +1,6 @@
 package com.careafter.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -18,6 +19,7 @@ public class Medication {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "discharge_plan_id", nullable = false)
     private DischargePlan dischargePlan;
@@ -27,5 +29,6 @@ public class Medication {
     private String frequency;
     private LocalDate startDate;
     private LocalDate endDate;
+    @Column(columnDefinition = "TEXT")
     private String instructions;
 }

@@ -22,12 +22,16 @@ public class JwtUtil {
     private long jwtExpirationMs;
 
     public String generateToken(String username) {
-        return Jwts.builder()
+        return generateToken(username, null);
+    }
+
+    public String generateToken(String username, String role) {
+        var builder = Jwts.builder()
                 .setSubject(username)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + jwtExpirationMs))
-                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
-                .compact();
+                .setExpiration(new Date(System.currentTimeMillis() + jwtExpirationMs));
+        if (role != null) builder.claim("role", role);
+        return builder.signWith(getSigningKey(), SignatureAlgorithm.HS256).compact();
     }
 
     public String getUsernameFromToken(String token) {

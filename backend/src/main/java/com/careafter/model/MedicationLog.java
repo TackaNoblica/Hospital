@@ -5,14 +5,15 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "alerts")
+@Table(name = "medication_logs")
 @NoArgsConstructor
 @AllArgsConstructor
-public class Alert {
+public class MedicationLog {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,17 +24,10 @@ public class Alert {
     private Patient patient;
 
     @ManyToOne
-    @JoinColumn(name = "symptom_checkin_id", nullable = false)
-    private SymptomCheckin symptomCheckin;
+    @JoinColumn(name = "medication_id", nullable = false)
+    private Medication medication;
 
-    private String alertType;
-
-    @Column(columnDefinition = "TEXT")
-    private String message;
-
-    @Enumerated(EnumType.STRING)
-    private AlertStatus status = AlertStatus.NEW;
-
-    private LocalDateTime createdAt;
-    private LocalDateTime resolvedAt;
+    private LocalDate scheduledDate;
+    private boolean taken = false;
+    private LocalDateTime takenAt;
 }

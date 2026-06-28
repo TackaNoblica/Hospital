@@ -12,4 +12,5 @@ import com.careafter.model.User;
 public interface PatientRepository extends JpaRepository<Patient, Long> {
     Optional<Patient> findByUser(User user);
     List<Patient> findByAssignedDoctor(User doctor);
+    List<Patient> findAllByOrderByIdAsc();
 }

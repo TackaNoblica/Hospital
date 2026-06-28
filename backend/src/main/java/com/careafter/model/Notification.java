@@ -27,6 +27,8 @@ public class Notification {
     private Patient patient;
 
     private String title;
+
+    @Column(columnDefinition = "TEXT")
     private String message;
     private String type;
     private Boolean isRead = false;

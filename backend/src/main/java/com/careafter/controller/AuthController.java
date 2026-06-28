@@ -42,7 +42,11 @@ public class AuthController {
         );
 
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-        String token = jwtUtil.generateToken(userDetails.getUsername());
-        return ResponseEntity.ok(new JwtResponse(token, "Bearer"));
+        User user = userRepository.findByEmail(userDetails.getUsername()).orElse(null);
+        String role      = user != null ? user.getRole().name() : "PATIENT";
+        String firstName = user != null ? user.getFirstName() : "";
+        String lastName  = user != null ? user.getLastName()  : "";
+        String token = jwtUtil.generateToken(userDetails.getUsername(), role);
+        return ResponseEntity.ok(new JwtResponse(token, "Bearer", firstName, lastName, role));
     }
 }

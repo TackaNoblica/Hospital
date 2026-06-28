@@ -26,6 +26,8 @@ public class Patient {
     private String gender;
     private String diagnosis;
     private String hospitalDepartment;
+    private java.time.LocalDate diagnosedAt;
+    private String diagnosisStatus = "ACTIVE"; // ACTIVE or RESOLVED
 
     @ManyToOne
     @JoinColumn(name = "assigned_doctor_id")

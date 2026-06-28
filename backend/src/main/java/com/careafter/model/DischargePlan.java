@@ -29,8 +29,14 @@ public class DischargePlan {
     private User doctor;
 
     private LocalDate dischargeDate;
+
+    @Column(columnDefinition = "TEXT")
     private String diagnosisSummary;
+
+    @Column(columnDefinition = "TEXT")
     private String recoveryInstructions;
+
+    @Column(columnDefinition = "TEXT")
     private String warningSigns;
 
     @Enumerated(EnumType.STRING)
