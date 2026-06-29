@@ -54,6 +54,7 @@ const EMPTY_FORM = {
   hasFatigue: false, hasNightSweats: false,
   generalWorsening: false, nausea: false, bleeding: false,
   comment: '',
+  imageData: null,
 };
 
 function SectionToggle({ label, icon, active, onToggle, children }) {
@@ -95,12 +96,13 @@ function RadioRow({ options, value, onChange }) {
 }
 
 export default function PatientPage() {
-  const [patient,    setPatient]    = useState(null);
-  const [recentC,    setRecentC]    = useState([]);
-  const [loadErr,    setLoadErr]    = useState('');
-  const [form,       setForm]       = useState(EMPTY_FORM);
-  const [result,     setResult]     = useState(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [patient,      setPatient]      = useState(null);
+  const [recentC,      setRecentC]      = useState([]);
+  const [loadErr,      setLoadErr]      = useState('');
+  const [form,         setForm]         = useState(EMPTY_FORM);
+  const [result,       setResult]       = useState(null);
+  const [submitting,   setSubmitting]   = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -141,15 +143,16 @@ export default function PatientPage() {
         nausea:           form.nausea,
         bleeding:         form.bleeding,
         comment:          form.comment || null,
+        imageData:        form.imageData || null,
       };
       const r = await client.post(`/api/symptom-checkins/patient/${patient.id}`, body);
       const riskLevel = r.data.riskLevel || 'GREEN';
-      // Detect distressed comment with green parameters → calming message
       const commentLc = (form.comment || '').toLowerCase();
       const isDistressed = DISTRESS_WORDS.some((w) => commentLc.includes(w));
       const displayResult = riskLevel === 'GREEN' && isDistressed ? 'GREEN_WORRIED' : riskLevel;
       setResult(displayResult);
       setForm(EMPTY_FORM);
+      setImagePreview(null);
       loadData();
     } catch {
       setLoadErr('Greška pri slanju. Pokušajte ponovo.');
@@ -355,7 +358,47 @@ export default function PatientPage() {
                 placeholder="Napišite kako se osećate ili šta vas brine..." />
             </div>
 
-            <button className="btn btn-primary btn-block btn-lg" onClick={submit} disabled={submitting || !patient}>
+            {/* ── Image upload ── */}
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label className="label">Fotografija simptoma (opciono)</label>
+              <div style={{ marginTop: 6 }}>
+                {imagePreview ? (
+                  <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <img src={imagePreview} alt="preview" style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 10, border: '2px solid var(--border)', objectFit: 'cover' }} />
+                    <button
+                      type="button"
+                      onClick={() => { set('imageData', null); setImagePreview(null); }}
+                      style={{ position: 'absolute', top: 6, right: 6, background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: 26, height: 26, cursor: 'pointer', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >✕</button>
+                  </div>
+                ) : (
+                  <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '20px 16px', border: '2px dashed var(--border)', borderRadius: 10, cursor: 'pointer', background: 'var(--surface-2)', transition: 'border-color .15s' }}
+                    onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--primary)'}
+                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                  >
+                    <span style={{ fontSize: 28 }}>📸</span>
+                    <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 500 }}>Priložite sliku simptoma (osip, rana...)</span>
+                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>JPG, PNG — max 2MB</span>
+                    <input type="file" accept="image/*" style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 2 * 1024 * 1024) { alert('Slika je prevelika — maksimum 2MB.'); return; }
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          set('imageData', ev.target.result);
+                          setImagePreview(ev.target.result);
+                        };
+                        reader.readAsDataURL(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            <button className="btn btn-primary btn-block btn-lg" onClick={submit} disabled={submitting || !patient} style={{ marginTop: 20 }}>
               {submitting ? 'Slanje...' : 'Pošalji dnevni dekurzus'}
             </button>
           </div>
@@ -393,6 +436,10 @@ export default function PatientPage() {
                             {c.wellbeingScore != null && <span className="checkin-val">{['','😩','😞','😐','🙂','😊'][c.wellbeingScore]} {c.wellbeingScore}/5</span>}
                           </div>
                           {c.comment && <div className="checkin-comment">"{c.comment}"</div>}
+                          {c.imageData && (
+                            <img src={c.imageData} alt="symptom" style={{ maxWidth: 120, maxHeight: 80, borderRadius: 6, marginTop: 4, objectFit: 'cover', border: '1px solid var(--border)', cursor: 'pointer' }}
+                              onClick={() => window.open(c.imageData, '_blank')} />
+                          )}
                         </div>
                       </div>
                     );

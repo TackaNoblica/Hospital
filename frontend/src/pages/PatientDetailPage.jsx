@@ -925,6 +925,13 @@ export default function PatientDetailPage() {
   const [activeDoc,     setActiveDoc]  = useState(null);
   const [adherence,     setAdherence]  = useState(null);
   const [allAdherence,  setAllAdherence] = useState(null);
+  const [showApptModal,    setShowApptModal]    = useState(false);
+  const [apptForm,         setApptForm]         = useState({ appointmentType: '', appointmentDate: '', appointmentTime: '', location: '', note: '' });
+  const [savingAppt,       setSavingAppt]       = useState(false);
+  const [patientReports,   setPatientReports]   = useState([]);
+  const [reportPatientModal, setReportPatientModal] = useState(false);
+  const [reportReason,     setReportReason]     = useState('');
+  const [sendingReport,    setSendingReport]    = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -940,14 +947,65 @@ export default function PatientDetailPage() {
     }).catch(() => {}).finally(() => setLoading(false));
   }, [id]);
 
+  // Load patient reports (by other doctors) once patient is known
+  useEffect(() => {
+    if (!patient?.user?.id) return;
+    axios.get(`${BASE}/api/reports/on-patient/${patient.user.id}`, { headers: authHdr() })
+      .then((r) => setPatientReports(r.data || []))
+      .catch(() => {});
+  }, [patient?.user?.id]);
+
+  const submitPatientReport = async () => {
+    if (!reportReason.trim() || !patient?.user?.id) return;
+    setSendingReport(true);
+    try {
+      await axios.post(`${BASE}/api/reports`,
+        { reportedUserId: String(patient.user.id), reportType: 'DOCTOR_REPORTS_PATIENT', reason: reportReason },
+        { headers: authHdr() }
+      );
+      setReportPatientModal(false); setReportReason('');
+      // Reload reports
+      const r = await axios.get(`${BASE}/api/reports/on-patient/${patient.user.id}`, { headers: authHdr() });
+      setPatientReports(r.data || []);
+    } catch {} finally { setSendingReport(false); }
+  };
+
   const latestRisk = checkins[0]?.riskLevel || 'GREEN';
   const risk  = RISK_META[latestRisk] || RISK_META.GREEN;
   const plan  = plans[0];
   const lastC = checkins[0];
   const g     = avatarGrad(patient?.id);
 
-  const upcoming = appts.filter((a) => isUpcoming(a.appointmentDate));
-  const past     = appts.filter((a) => !isUpcoming(a.appointmentDate));
+  const upcoming = appts.filter((a) => isUpcoming(a.appointmentDate) && a.status !== 'CANCELLED');
+  const past     = appts.filter((a) => !isUpcoming(a.appointmentDate) || a.status === 'CANCELLED');
+
+  const loadAppts = () =>
+    client.get(`/api/patients/${id}/appointments`)
+      .then((r) => setAppts(r.data.slice().sort((x, y) => new Date(x.appointmentDate) - new Date(y.appointmentDate))))
+      .catch(() => {});
+
+  const saveAppt = async () => {
+    if (!apptForm.appointmentType || !apptForm.appointmentDate || !apptForm.appointmentTime) return;
+    setSavingAppt(true);
+    try {
+      const dt = `${apptForm.appointmentDate}T${apptForm.appointmentTime}:00`;
+      await client.post(`/api/patients/${id}/appointments`, {
+        appointmentType: apptForm.appointmentType,
+        appointmentDate: dt,
+        location: apptForm.location,
+        note: apptForm.note || null,
+      });
+      setShowApptModal(false);
+      setApptForm({ appointmentType: '', appointmentDate: '', appointmentTime: '', location: '', note: '' });
+      loadAppts();
+    } finally { setSavingAppt(false); }
+  };
+
+  const cancelAppt = async (apptId) => {
+    if (!window.confirm('Otkazati ovaj pregled?')) return;
+    await client.patch(`/api/appointments/${apptId}/cancel`).catch(() => {});
+    loadAppts();
+  };
 
   const isKartonActive = patient?.diagnosisStatus === 'ACTIVE';
 
@@ -996,6 +1054,16 @@ export default function PatientDetailPage() {
                   <span className={`pill ${isKartonActive ? 'pill-red' : 'pill-green'}`}>
                     {isKartonActive ? '● Karton otvoren' : '● Karton zatvoren'}
                   </span>
+                  {patientReports.length > 0 && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      padding: '3px 10px', borderRadius: 999,
+                      background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5',
+                      fontSize: 12, fontWeight: 700,
+                    }}>
+                      🚩 {patientReports.length} prijava
+                    </span>
+                  )}
                   {lastC && (
                     <span style={{ fontSize: 12, color: 'var(--muted)' }}>
                       Poslednja prijava: {fmtDate(lastC.createdAt)}
@@ -1052,9 +1120,36 @@ export default function PatientDetailPage() {
             </div>
           )}
 
-          {/* Close / reopen karton */}
+          {/* Patient doctor-reports list */}
+          {patientReports.length > 0 && (
+            <div style={{
+              background: '#fff8f8', border: '1.5px solid #fca5a5', borderRadius: 14,
+              padding: '14px 20px', marginBottom: 12,
+            }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: '#dc2626', marginBottom: 10 }}>
+                🚩 Ovaj pacijent je bio prijavljen ({patientReports.length}×)
+              </div>
+              {patientReports.map((rep) => (
+                <div key={rep.id} style={{ fontSize: 13, color: '#7f1d1d', marginBottom: 6, paddingLeft: 4 }}>
+                  <span style={{ fontWeight: 700 }}>Dr. {rep.reporter?.firstName} {rep.reporter?.lastName}</span>
+                  {' · '}{rep.createdAt ? new Date(rep.createdAt).toLocaleDateString('sr-RS') : ''}
+                  {': '}
+                  <span>{rep.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Close / reopen karton + report patient */}
           {patient && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginBottom: 8 }}>
+              <button
+                className="btn btn-ghost"
+                onClick={() => { setReportPatientModal(true); setReportReason(''); }}
+                style={{ fontSize: 13, borderColor: '#fca5a5', color: '#ef4444' }}
+              >
+                🚩 Prijavi pacijenta
+              </button>
               <button
                 className={`btn ${isKartonActive ? 'btn-danger-outline' : 'btn-outline'}`}
                 onClick={toggleKarton}
@@ -1153,6 +1248,10 @@ export default function PatientDetailPage() {
                                 {c.generalWorsening && <span className="checkin-val">⚠️ Opšte pogoršanje</span>}
                               </div>
                               {c.comment && <div className="checkin-comment">"{c.comment}"</div>}
+                              {c.imageData && (
+                                <img src={c.imageData} alt="symptom" onClick={() => window.open(c.imageData, '_blank')}
+                                  style={{ maxWidth: 140, maxHeight: 100, borderRadius: 8, marginTop: 6, objectFit: 'cover', border: '1.5px solid var(--border)', cursor: 'pointer' }} />
+                              )}
                             </div>
                           </div>
                         );
@@ -1207,10 +1306,20 @@ export default function PatientDetailPage() {
 
               {/* ── Appointments ── */}
               {tab === 'appointments' && (
-                appts.length === 0 ? (
-                  <div className="empty"><div className="empty-icon">📅</div><h3>Nema zakazanih pregleda</h3></div>
-                ) : (
-                  <>
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ fontSize: 13, padding: '8px 16px' }}
+                      onClick={() => setShowApptModal(true)}
+                    >
+                      + Zakaži pregled
+                    </button>
+                  </div>
+                  {appts.filter((a) => a.status !== 'CANCELLED').length === 0 && upcoming.length === 0 ? (
+                    <div className="empty"><div className="empty-icon">📅</div><h3>Nema zakazanih pregleda</h3></div>
+                  ) : (
+                    <>
                     {upcoming.length > 0 && (
                       <>
                         <div className="section-header"><span className="section-title">Predstojecu ({upcoming.length})</span></div>
@@ -1229,9 +1338,15 @@ export default function PatientDetailPage() {
                                 </div>
                                 {a.note && <p className="appt-note">{a.note}</p>}
                               </div>
-                              {isToday(a.appointmentDate) && (
-                                <span className="appt-badge" style={{ background: 'var(--red-bg)', color: 'var(--red-dark)' }}>Danas!</span>
-                              )}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', flexShrink: 0 }}>
+                                {isToday(a.appointmentDate) && (
+                                  <span className="appt-badge" style={{ background: 'var(--red-bg)', color: 'var(--red-dark)' }}>Danas!</span>
+                                )}
+                                <button onClick={() => cancelAppt(a.id)}
+                                  style={{ fontSize: 11, fontWeight: 600, color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>
+                                  Otkaži
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1242,13 +1357,15 @@ export default function PatientDetailPage() {
                         <div className="section-header"><span className="section-title" style={{ color: 'var(--muted)' }}>Prosli ({past.length})</span></div>
                         <div className="appt-list">
                           {past.slice().reverse().map((a) => (
-                            <div key={a.id} className="appt-card past">
+                            <div key={a.id} className={`appt-card ${a.status === 'CANCELLED' ? '' : 'past'}`} style={a.status === 'CANCELLED' ? { opacity: 0.6 } : undefined}>
                               <div className="appt-date-block">
                                 <div className="appt-day">{fmtDay(a.appointmentDate)}</div>
                                 <div className="appt-month">{fmtMon(a.appointmentDate)}</div>
                               </div>
                               <div className="appt-body">
-                                <div className="appt-title">{a.appointmentType}</div>
+                                <div className="appt-title">{a.appointmentType}
+                                  {a.status === 'CANCELLED' && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#ef4444', background: '#fef2f2', padding: '1px 7px', borderRadius: 6, border: '1px solid #fecaca' }}>Otkazano</span>}
+                                </div>
                                 <div className="appt-meta">
                                   <span>🕐 {fmtTime(a.appointmentDate)}</span>
                                   <span>📍 {a.location}</span>
@@ -1260,8 +1377,9 @@ export default function PatientDetailPage() {
                         </div>
                       </>
                     )}
-                  </>
-                )
+                    </>
+                  )}
+                </>
               )}
 
               {/* ── Plan ── */}
@@ -1435,6 +1553,92 @@ export default function PatientDetailPage() {
         </div>
       </div>
       {activeDoc && <DocViewModal doc={activeDoc} onClose={() => setActiveDoc(null)} />}
+
+      {/* ── Schedule appointment modal ── */}
+      {showApptModal && (
+        <div className="modal-overlay" onClick={() => setShowApptModal(false)}>
+          <div className="modal-sheet" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span style={{ fontWeight: 700, fontSize: 15 }}>📅 Zakaži pregled</span>
+              <button className="modal-close" onClick={() => setShowApptModal(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: '16px 24px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 5 }}>Vrsta pregleda *</label>
+                <input value={apptForm.appointmentType} onChange={(e) => setApptForm((f) => ({ ...f, appointmentType: e.target.value }))}
+                  placeholder="npr. Kontrolni pulmoloski pregled"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }} />
+              </div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 5 }}>Datum *</label>
+                  <input type="date" value={apptForm.appointmentDate} onChange={(e) => setApptForm((f) => ({ ...f, appointmentDate: e.target.value }))}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 5 }}>Vreme *</label>
+                  <input type="time" value={apptForm.appointmentTime} onChange={(e) => setApptForm((f) => ({ ...f, appointmentTime: e.target.value }))}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 5 }}>Lokacija</label>
+                <input value={apptForm.location} onChange={(e) => setApptForm((f) => ({ ...f, location: e.target.value }))}
+                  placeholder="npr. Ambulanta 3, II sprat"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 5 }}>Napomena (opciono)</label>
+                <textarea value={apptForm.note} onChange={(e) => setApptForm((f) => ({ ...f, note: e.target.value }))}
+                  placeholder="Posebne napomene za pacijenta..."
+                  rows={2}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14, resize: 'vertical' }} />
+              </div>
+              <button
+                className="btn btn-primary"
+                onClick={saveAppt}
+                disabled={savingAppt || !apptForm.appointmentType || !apptForm.appointmentDate || !apptForm.appointmentTime}
+                style={{ padding: '11px 0', fontSize: 14, marginTop: 4 }}
+              >
+                {savingAppt ? 'Zakazivanje...' : 'Zakaži pregled'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Report patient modal ── */}
+      {reportPatientModal && (
+        <div className="modal-overlay" onClick={() => setReportPatientModal(false)}>
+          <div className="modal-sheet" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span style={{ fontWeight: 700, fontSize: 15, color: '#ef4444' }}>🚩 Prijava pacijenta</span>
+              <button className="modal-close" onClick={() => setReportPatientModal(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: '16px 24px 24px' }}>
+              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
+                Ova prijava će biti vidljiva svim lekarima koji budu pratili ovog pacijenta u budućnosti.
+              </p>
+              <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Razlog prijave:</label>
+              <textarea
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+                placeholder="Opišite problem — neprimereno ponašanje, ometanje lečenja..."
+                rows={4}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13.5, resize: 'vertical', marginBottom: 20 }}
+              />
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setReportPatientModal(false)}>Otkaži</button>
+                <button className="btn btn-primary" style={{ flex: 1, background: '#ef4444', borderColor: '#ef4444' }}
+                  disabled={!reportReason.trim() || sendingReport}
+                  onClick={submitPatientReport}>
+                  {sendingReport ? 'Slanje...' : 'Pošalji prijavu'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

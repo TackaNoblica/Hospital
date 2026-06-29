@@ -5,5 +5,6 @@ public enum Role {
     DOCTOR,
     NURSE,
     PATIENT,
-    FAMILY_MEMBER
+    FAMILY_MEMBER,
+    HEALTH_INSTITUTION
 }

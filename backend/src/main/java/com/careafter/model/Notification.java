@@ -33,4 +33,5 @@ public class Notification {
     private String type;
     private Boolean isRead = false;
     private LocalDateTime createdAt;
+    private Long relatedUserId;
 }

@@ -34,4 +34,10 @@ public class Appointment {
     private String location;
     @Column(columnDefinition = "TEXT")
     private String note;
+
+    private String status = "SCHEDULED";  // SCHEDULED | CANCELLED
+
+    @ManyToOne
+    @JoinColumn(name = "scheduled_by_id")
+    private User scheduledBy;
 }

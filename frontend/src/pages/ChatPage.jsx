@@ -65,6 +65,11 @@ export default function ChatPage() {
   const [groupTitle,     setGroupTitle]     = useState('');
   const [selectedDocs,   setSelectedDocs]   = useState([]);
   const [creatingGroup,  setCreatingGroup]  = useState(false);
+  const [muteStatus,     setMuteStatus]     = useState(false);
+  const [reportModal,    setReportModal]    = useState(false);
+  const [reportReason,   setReportReason]   = useState('');
+  const [sendingReport,  setSendingReport]  = useState(false);
+  const [reportToast,    setReportToast]    = useState('');
 
   const messagesEndRef = useRef(null);
   const pollRef        = useRef(null);
@@ -107,12 +112,15 @@ export default function ChatPage() {
     }
   }, [conversations, activeConvId]);
 
-  // Load messages + poll when active conversation changes
+  // Load messages + poll + mute status when active conversation changes
   useEffect(() => {
     if (!activeConvId) return;
     setMessages([]);
     setLoadingMsgs(true);
     loadMessages(activeConvId);
+    api(`/api/conversations/${activeConvId}/mute-status`)
+      .then((res) => setMuteStatus(res.data.muted ?? false))
+      .catch(() => setMuteStatus(false));
     clearInterval(pollRef.current);
     pollRef.current = setInterval(() => {
       loadMessages(activeConvId);
@@ -165,8 +173,31 @@ export default function ChatPage() {
     setConversations((prev) => [...prev]); // force re-render
   };
 
+  const toggleMutePatient = async () => {
+    try {
+      const res = await api(`/api/conversations/${activeConvId}/mute-patient`, { method: 'patch' });
+      setMuteStatus(res.data.muted ?? false);
+    } catch {}
+  };
+
   const handleKey = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  };
+
+  const submitReport = async () => {
+    if (!reportReason.trim() || !activeConv) return;
+    const doctor = activeConv.participants?.find((p) => p.role === 'DOCTOR');
+    if (!doctor) return;
+    setSendingReport(true);
+    try {
+      await api('/api/reports', { method: 'post', data: { reportedUserId: String(doctor.id), reportType: 'PATIENT_REPORTS_DOCTOR', reason: reportReason } });
+      setReportModal(false); setReportReason('');
+      setReportToast('Prijava je poslata. Ustanova će pregledati Vašu prijavu.');
+      setTimeout(() => setReportToast(''), 4000);
+    } catch {
+      setReportToast('Greška pri slanju prijave.');
+      setTimeout(() => setReportToast(''), 3000);
+    } finally { setSendingReport(false); }
   };
 
   const openGroupModal = async () => {
@@ -286,18 +317,51 @@ export default function ChatPage() {
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={() => toggleMute(activeConvId)}
-                  title={isMuted(activeConvId) ? 'Uključi obaveštenja' : 'Mutiraj razgovor'}
-                  style={{
-                    background: 'none', border: '1.5px solid var(--border)', borderRadius: 8,
-                    cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                    color: isMuted(activeConvId) ? '#6366f1' : 'var(--muted)',
-                    padding: '5px 10px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5,
-                  }}
-                >
-                  {isMuted(activeConvId) ? '🔔 Uključi' : '🔕 Mutiraj'}
-                </button>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  {/* Doctor: mute/unmute patient */}
+                  {role === 'DOCTOR' && activeConv?.patient && (
+                    <button
+                      onClick={toggleMutePatient}
+                      title={muteStatus ? 'Odmutuj pacijenta' : 'Mutiraj pacijenta'}
+                      style={{
+                        background: muteStatus ? '#fef2f2' : 'none',
+                        border: `1.5px solid ${muteStatus ? '#fca5a5' : 'var(--border)'}`,
+                        borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                        color: muteStatus ? '#ef4444' : 'var(--muted)',
+                        padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 5,
+                      }}
+                    >
+                      {muteStatus ? '🔔 Odmutuj pacijenta' : '🔕 Mutiraj pacijenta'}
+                    </button>
+                  )}
+                  {/* Patient: report doctor */}
+                  {role === 'PATIENT' && activeConv?.participants?.some((p) => p.role === 'DOCTOR') && (
+                    <button
+                      onClick={() => { setReportModal(true); setReportReason(''); }}
+                      title="Prijavi lekara"
+                      style={{
+                        background: 'none', border: '1.5px solid #fca5a5', borderRadius: 8,
+                        cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                        color: '#ef4444', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 5,
+                      }}
+                    >
+                      🚩 Prijavi lekara
+                    </button>
+                  )}
+                  {/* Mute conversation notifications */}
+                  <button
+                    onClick={() => toggleMute(activeConvId)}
+                    title={isMuted(activeConvId) ? 'Uključi obaveštenja' : 'Mutiraj obaveštenja'}
+                    style={{
+                      background: 'none', border: '1.5px solid var(--border)', borderRadius: 8,
+                      cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                      color: isMuted(activeConvId) ? '#6366f1' : 'var(--muted)',
+                      padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 5,
+                    }}
+                  >
+                    {isMuted(activeConvId) ? '🔔 Uključi' : '🔕'}
+                  </button>
+                </div>
               </div>
 
               {/* Messages body */}
@@ -327,25 +391,39 @@ export default function ChatPage() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input */}
-              <div className="chat-input-area">
-                <textarea
-                  ref={inputRef}
-                  className="chat-textarea"
-                  placeholder="Unesite poruku... (Enter za slanje)"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKey}
-                  rows={1}
-                />
-                <button
-                  className="btn-primary chat-send-btn"
-                  onClick={send}
-                  disabled={sending || !input.trim()}
-                >
-                  <SendIcon />
-                </button>
-              </div>
+              {/* Input / muted banner */}
+              {role === 'PATIENT' && muteStatus ? (
+                <div style={{
+                  padding: '16px 20px', background: '#fef2f2',
+                  borderTop: '1px solid #fecaca',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}>
+                  <span style={{ fontSize: 20 }}>🔕</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#dc2626' }}>Slanje poruka je onemogućeno</div>
+                    <div style={{ fontSize: 12, color: '#ef4444', marginTop: 2 }}>Lekar je privremeno ograničio Vašu komunikaciju u ovom razgovoru.</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="chat-input-area">
+                  <textarea
+                    ref={inputRef}
+                    className="chat-textarea"
+                    placeholder="Unesite poruku... (Enter za slanje)"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKey}
+                    rows={1}
+                  />
+                  <button
+                    className="btn-primary chat-send-btn"
+                    onClick={send}
+                    disabled={sending || !input.trim()}
+                  >
+                    <SendIcon />
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -403,6 +481,44 @@ export default function ChatPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* ── Report doctor modal ── */}
+      {reportModal && (
+        <div style={{ position: 'fixed', inset: 0, background: '#00000077', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="card" style={{ width: 400, padding: '28px 28px 24px' }}>
+            <h3 style={{ marginBottom: 8, color: '#ef4444' }}>🚩 Prijava lekara</h3>
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
+              Zdravstvena ustanova će pregledati Vašu prijavu. Prva prijava šalje upozorenje lekaru, a ponavljanje može dovesti do privremene zabrane profila.
+            </p>
+            <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Razlog prijave:</label>
+            <textarea
+              placeholder="Opišite problem — npr. lekar ne odgovara na poruke, neprofesionalno ponašanje..."
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              rows={4}
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '10px 12px',
+                border: '1.5px solid var(--border)', borderRadius: 10,
+                fontSize: 13.5, resize: 'vertical', marginBottom: 20,
+                background: 'var(--surface)', color: 'var(--text)',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setReportModal(false)}>Otkaži</button>
+              <button className="btn btn-primary" style={{ flex: 1, background: '#ef4444', borderColor: '#ef4444' }}
+                disabled={!reportReason.trim() || sendingReport}
+                onClick={submitReport}>
+                {sendingReport ? 'Slanje...' : 'Pošalji prijavu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reportToast && (
+        <div className="toast" style={{ background: reportToast.startsWith('Greška') ? '#ef4444' : '#6366f1' }}>
+          {reportToast}
         </div>
       )}
     </div>

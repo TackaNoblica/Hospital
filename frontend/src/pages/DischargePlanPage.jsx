@@ -102,11 +102,22 @@ export default function DischargePlanPage() {
   const recoveryProgress = plan ? Math.min(100, Math.round((Math.abs(Math.min(0, days ?? 0)) / totalDaysRecovery) * 100)) : 0;
 
   const firstName  = patient?.user?.firstName;
-  const nextAppt   = appts.find((a) => isUpcoming(a.appointmentDate));
-  const upcomingAppts = appts.filter((a) => isUpcoming(a.appointmentDate));
-  const pastAppts     = appts.filter((a) => !isUpcoming(a.appointmentDate));
+  const upcomingAppts = appts.filter((a) => isUpcoming(a.appointmentDate) && a.status !== 'CANCELLED');
+  const pastAppts     = appts.filter((a) => !isUpcoming(a.appointmentDate) || a.status === 'CANCELLED');
+  const nextAppt   = upcomingAppts[0] ?? null;
   const daysToNextAppt = nextAppt ? daysUntil(nextAppt.appointmentDate) : null;
   const alreadyDischarged = days != null && days <= 0;
+
+  const loadAppts = () =>
+    client.get('/api/patients/me/appointments')
+      .then((r) => setAppts(r.data.slice().sort((a, b) => new Date(a.appointmentDate) - new Date(b.appointmentDate))))
+      .catch(() => {});
+
+  const cancelAppt = async (apptId) => {
+    if (!window.confirm('Otkazati ovaj pregled?')) return;
+    await client.patch(`/api/appointments/${apptId}/cancel`).catch(() => {});
+    loadAppts();
+  };
 
   return (
     <div className="layout">
@@ -376,6 +387,10 @@ export default function DischargePlanPage() {
                                 </div>
                                 {a.note && <p className="appt-note">{a.note}</p>}
                               </div>
+                              <button onClick={() => cancelAppt(a.id)}
+                                style={{ fontSize: 11, fontWeight: 600, color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', flexShrink: 0, alignSelf: 'center' }}>
+                                Otkaži
+                              </button>
                             </div>
                           ))}
                         </div>

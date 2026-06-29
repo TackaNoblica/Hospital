@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import client from '../api/client';
 
 const DEMO = [
-  { label: 'Lekar',    sub: 'DOCTOR',        email: 'doctor@careafter.local',  password: 'doctor123',  go: '/dashboard' },
-  { label: 'Pacijent', sub: 'PATIENT',        email: 'patient@careafter.local', password: 'patient123', go: '/patient'   },
-  { label: 'Porodica', sub: 'FAMILY_MEMBER',  email: 'family@careafter.local',  password: 'family123',  go: '/family'    },
+  { label: 'Lekar',     sub: 'DOCTOR',             email: 'doctor@careafter.local',   password: 'doctor123',   go: '/dashboard'  },
+  { label: 'Pacijent',  sub: 'PATIENT',             email: 'patient@careafter.local',  password: 'patient123',  go: '/patient'    },
+  { label: 'Porodica',  sub: 'FAMILY_MEMBER',       email: 'family@careafter.local',   password: 'family123',   go: '/family'     },
+  { label: 'Ustanova',  sub: 'HEALTH_INSTITUTION',  email: 'hospital@careafter.local', password: 'hospital123', go: '/institution'},
 ];
 
 const roleFromJwt = (token) => {
@@ -22,7 +23,7 @@ export default function LoginPage() {
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
 
-  const ROLE_HOME = { DOCTOR: '/dashboard', PATIENT: '/patient', FAMILY_MEMBER: '/family', FAMILY: '/family' };
+  const ROLE_HOME = { DOCTOR: '/dashboard', PATIENT: '/patient', FAMILY_MEMBER: '/family', FAMILY: '/family', HEALTH_INSTITUTION: '/institution' };
 
   const doLogin = async (mail, pass) => {
     setError(''); setLoading(true);

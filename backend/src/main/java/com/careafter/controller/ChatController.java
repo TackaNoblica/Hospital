@@ -1,13 +1,7 @@
 package com.careafter.controller;
 
-import com.careafter.model.ChatMessage;
-import com.careafter.model.Conversation;
-import com.careafter.model.Notification;
-import com.careafter.model.User;
-import com.careafter.repository.ChatMessageRepository;
-import com.careafter.repository.ConversationRepository;
-import com.careafter.repository.NotificationRepository;
-import com.careafter.repository.UserRepository;
+import com.careafter.model.*;
+import com.careafter.repository.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,18 +19,23 @@ public class ChatController {
     private final ChatMessageRepository messageRepo;
     private final UserRepository userRepo;
     private final NotificationRepository notifRepo;
+    private final PatientRepository patientRepo;
+    private final DoctorPatientRequestRepository requestRepo;
 
     public ChatController(ConversationRepository conversationRepo,
                           ChatMessageRepository messageRepo,
                           UserRepository userRepo,
-                          NotificationRepository notifRepo) {
+                          NotificationRepository notifRepo,
+                          PatientRepository patientRepo,
+                          DoctorPatientRequestRepository requestRepo) {
         this.conversationRepo = conversationRepo;
         this.messageRepo = messageRepo;
         this.userRepo = userRepo;
         this.notifRepo = notifRepo;
+        this.patientRepo = patientRepo;
+        this.requestRepo = requestRepo;
     }
 
-    /** List all conversations for the logged-in user */
     @GetMapping
     public ResponseEntity<List<Conversation>> getMyConversations(Principal principal) {
         User user = userRepo.findByEmail(principal.getName())
@@ -44,7 +43,6 @@ public class ChatController {
         return ResponseEntity.ok(conversationRepo.findByParticipant(user));
     }
 
-    /** Get messages in a conversation */
     @GetMapping("/{id}/messages")
     public ResponseEntity<List<ChatMessage>> getMessages(@PathVariable Long id, Principal principal) {
         Conversation conv = conversationRepo.findById(id)
@@ -52,7 +50,6 @@ public class ChatController {
         User user = userRepo.findByEmail(principal.getName())
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        // Mark all unread messages (not sent by me) as read
         List<ChatMessage> messages = messageRepo.findByConversationOrderBySentAtAsc(conv);
         messages.stream()
                 .filter(m -> !m.isRead() && !m.getSender().getId().equals(user.getId()))
@@ -61,7 +58,6 @@ public class ChatController {
         return ResponseEntity.ok(messages);
     }
 
-    /** Send a message */
     @PostMapping("/{id}/messages")
     public ResponseEntity<ChatMessage> sendMessage(@PathVariable Long id,
                                                     @RequestBody Map<String, String> body,
@@ -76,6 +72,20 @@ public class ChatController {
             return ResponseEntity.badRequest().build();
         }
 
+        // Block send if patient is muted by a doctor in this conversation
+        if (sender.getRole() == Role.PATIENT) {
+            Patient senderPatient = patientRepo.findByUser(sender).orElse(null);
+            if (senderPatient != null) {
+                boolean isMuted = requestRepo.findByPatientAndStatus(senderPatient, RequestStatus.APPROVED)
+                        .stream()
+                        .anyMatch(r -> Boolean.TRUE.equals(r.getMutedPatient())
+                                && conv.getParticipants().contains(r.getDoctor()));
+                if (isMuted) {
+                    return ResponseEntity.status(403).build();
+                }
+            }
+        }
+
         ChatMessage msg = new ChatMessage();
         msg.setConversation(conv);
         msg.setSender(sender);
@@ -83,14 +93,12 @@ public class ChatController {
         msg.setSentAt(LocalDateTime.now());
         msg.setRead(false);
 
-        // Update conversation last message time
         conv.setLastMessageAt(LocalDateTime.now());
         conversationRepo.save(conv);
 
         return ResponseEntity.ok(messageRepo.save(msg));
     }
 
-    /** Mark a message as urgent — creates notification for other participants */
     @PatchMapping("/messages/{msgId}/urgent")
     public ResponseEntity<ChatMessage> markUrgent(@PathVariable Long msgId, Principal principal) {
         ChatMessage msg = messageRepo.findById(msgId)
@@ -101,7 +109,6 @@ public class ChatController {
         msg.setUrgent(true);
         messageRepo.save(msg);
 
-        // Notify all other participants in the conversation
         Conversation conv = msg.getConversation();
         conv.getParticipants().stream()
                 .filter(p -> !p.getId().equals(sender.getId()))
@@ -121,7 +128,6 @@ public class ChatController {
         return ResponseEntity.ok(msg);
     }
 
-    /** Count unread messages for current user */
     @GetMapping("/unread-count")
     public ResponseEntity<Map<String, Long>> getUnreadCount(Principal principal) {
         User user = userRepo.findByEmail(principal.getName())
@@ -132,7 +138,54 @@ public class ChatController {
         return ResponseEntity.ok(Map.of("unread", count));
     }
 
-    /** Create a group conversation (patient + multiple doctors) */
+    /** Doctor toggles mute on the patient in this conversation */
+    @PatchMapping("/{convId}/mute-patient")
+    public ResponseEntity<Map<String, Boolean>> mutePatient(@PathVariable Long convId, Principal principal) {
+        Conversation conv = conversationRepo.findById(convId)
+                .orElseThrow(() -> new IllegalArgumentException("Conversation not found"));
+        User doctor = userRepo.findByEmail(principal.getName())
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        Patient patient = conv.getPatient();
+        if (patient == null) return ResponseEntity.badRequest().build();
+
+        DoctorPatientRequest req = requestRepo.findByDoctorAndPatient(doctor, patient)
+                .orElse(null);
+        if (req == null) return ResponseEntity.status(403).build();
+
+        req.setMutedPatient(!Boolean.TRUE.equals(req.getMutedPatient()));
+        requestRepo.save(req);
+        return ResponseEntity.ok(Map.of("muted", Boolean.TRUE.equals(req.getMutedPatient())));
+    }
+
+    /** Returns mute status — from doctor or patient perspective */
+    @GetMapping("/{convId}/mute-status")
+    public ResponseEntity<Map<String, Boolean>> getMuteStatus(@PathVariable Long convId, Principal principal) {
+        Conversation conv = conversationRepo.findById(convId)
+                .orElseThrow(() -> new IllegalArgumentException("Conversation not found"));
+        User user = userRepo.findByEmail(principal.getName())
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        Patient patient = conv.getPatient();
+
+        if (patient == null) return ResponseEntity.ok(Map.of("muted", false));
+
+        if (user.getRole() == Role.DOCTOR) {
+            boolean muted = requestRepo.findByDoctorAndPatient(user, patient)
+                    .map(r -> Boolean.TRUE.equals(r.getMutedPatient()))
+                    .orElse(false);
+            return ResponseEntity.ok(Map.of("muted", muted));
+        }
+
+        if (user.getRole() == Role.PATIENT && patient.getUser().getId().equals(user.getId())) {
+            boolean muted = requestRepo.findByPatientAndStatus(patient, RequestStatus.APPROVED)
+                    .stream()
+                    .anyMatch(r -> Boolean.TRUE.equals(r.getMutedPatient())
+                            && conv.getParticipants().contains(r.getDoctor()));
+            return ResponseEntity.ok(Map.of("muted", muted));
+        }
+
+        return ResponseEntity.ok(Map.of("muted", false));
+    }
+
     @PostMapping("/group")
     public ResponseEntity<Conversation> createGroupConversation(@RequestBody Map<String, Object> body,
                                                                  Principal principal) {

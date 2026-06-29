@@ -29,4 +29,6 @@ public class DoctorPatientRequest {
 
     private LocalDateTime requestedAt = LocalDateTime.now();
     private LocalDateTime respondedAt;
+
+    private Boolean mutedPatient = false;
 }

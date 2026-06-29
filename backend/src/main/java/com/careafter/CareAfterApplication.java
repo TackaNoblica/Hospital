@@ -41,6 +41,9 @@ public class CareAfterApplication {
             ChatMessageRepository chatMessageRepo,
             MedicalDocumentRepository medDocRepo,
             MedicationLogRepository logRepo,
+            InstitutionDoctorRequestRepository instDocRepo,
+            DoctorRatingRepository ratingRepo,
+            ReportRepository reportRepo,
             org.springframework.security.crypto.password.PasswordEncoder enc,
             MedicationReminderScheduler reminderScheduler) {
 
@@ -63,6 +66,39 @@ public class CareAfterApplication {
             User doctor3 = save(userRepo, "doctor3@careafter.local",
                     new User(null, "Dr. Ivan", "Djordjevic", "doctor3@careafter.local",
                             enc.encode("doctor123"), Role.DOCTOR, true));
+
+            // Postavljamo specialty/hospital za pulmologe
+            if (doctor.getSpecialty() == null) {
+                doctor.setSpecialty("Internista — Specijalista pulmologije"); doctor.setHospital("Klinika za pulmologiju, KBC Bezanijska kosa"); userRepo.save(doctor);
+            }
+            if (doctor2.getSpecialty() == null) {
+                doctor2.setSpecialty("Internista — Specijalista pulmologije"); doctor2.setHospital("Klinika za pulmologiju, KBC Bezanijska kosa"); userRepo.save(doctor2);
+            }
+            if (doctor3.getSpecialty() == null) {
+                doctor3.setSpecialty("Internista — Specijalista pulmologije"); doctor3.setHospital("Klinika za pulmologiju, KBC Bezanijska kosa"); userRepo.save(doctor3);
+            }
+
+            // Doktori iz drugacijih klinika
+            User doctorKardio = save(userRepo, "doctor4@careafter.local",
+                    new User(null, "Dr. Nenad", "Savic", "doctor4@careafter.local",
+                            enc.encode("doctor123"), Role.DOCTOR, true));
+            if (doctorKardio.getSpecialty() == null) {
+                doctorKardio.setSpecialty("Internista — Specijalista kardiologije"); doctorKardio.setHospital("Odeljenje kardiologije, KBC Zemun"); userRepo.save(doctorKardio);
+            }
+
+            User doctorNeur = save(userRepo, "doctor5@careafter.local",
+                    new User(null, "Dr. Sonja", "Vasic", "doctor5@careafter.local",
+                            enc.encode("doctor123"), Role.DOCTOR, true));
+            if (doctorNeur.getSpecialty() == null) {
+                doctorNeur.setSpecialty("Specijalista neurologije"); doctorNeur.setHospital("Institut za neurologiju i psihijatriju, Laza Lazarevic"); userRepo.save(doctorNeur);
+            }
+
+            User doctorHir = save(userRepo, "doctor6@careafter.local",
+                    new User(null, "Dr. Vojislav", "Milic", "doctor6@careafter.local",
+                            enc.encode("doctor123"), Role.DOCTOR, true));
+            if (doctorHir.getSpecialty() == null) {
+                doctorHir.setSpecialty("Specijalista opste hirurgije"); doctorHir.setHospital("Hirurska klinika, UKC Srbija"); userRepo.save(doctorHir);
+            }
 
             // Pacijenti — plucna patologija
             User milicaU = save(userRepo, "patient@careafter.local",
@@ -1015,6 +1051,23 @@ public class CareAfterApplication {
                 "Pulsni oksimetar: pacijent redovno koristi, biljezi vrednosti.\n\n" +
                 "ZAKLJUCAK:\nIPF bez znacajnog napredovanja u poslednjoj godini. Nastaviti nintedanib i kiseonik pri naporu.");
 
+            // ─── Healthcare Institution ───────────────────────────────────────────
+            User institution = save(userRepo, "hospital@careafter.local",
+                    new User(null, "KBC Bezanijska Kosa", "Zdravstvena Ustanova", "hospital@careafter.local",
+                            enc.encode("hospital123"), Role.HEALTH_INSTITUTION, true));
+
+            instInstDoc(instDocRepo, institution, doctor,  LocalDateTime.now().minusDays(30));
+            instInstDoc(instDocRepo, institution, doctor2, LocalDateTime.now().minusDays(28));
+            instInstDoc(instDocRepo, institution, doctor3, LocalDateTime.now().minusDays(25));
+
+            // ─── Doctor Ratings (demo) ────────────────────────────────────────────
+            seedRating(ratingRepo, milicaU, doctor,  5, "Odlican lekar, veoma pazljiv i profesionalan.",    LocalDateTime.now().minusDays(3));
+            seedRating(ratingRepo, nikolaU, doctor,  4, "Dobro objasnjava sve, strpljiv i pristupacan.",    LocalDateTime.now().minusDays(5));
+            seedRating(ratingRepo, majaU,   doctor,  5, "Izvrsno, brzo reagovao na krizu! Hvala.",         LocalDateTime.now().minusDays(2));
+            seedRating(ratingRepo, zoranU,  doctor3, 5, "Spasilac zivota, pravi profesionalac!",           LocalDateTime.now().minusDays(4));
+            seedRating(ratingRepo, draganaU,doctor2, 4, "Lepa komunikacija, jasna i detaljno objasnjava.", LocalDateTime.now().minusDays(6));
+            seedRating(ratingRepo, stefanP.getUser(), doctor2, 5, "Puna podrska i razumevanje za moj slucaj.", LocalDateTime.now().minusDays(8));
+
             // Daily medication reminders on first startup
             reminderScheduler.sendRemindersNow();
         };
@@ -1179,6 +1232,27 @@ public class CareAfterApplication {
         f.setPatient(p); f.setFamilyMember(member); f.setRelation(rel);
         f.setConsentGiven(true); f.setCreatedAt(LocalDateTime.now().minusDays(7));
         r.save(f);
+    }
+
+    private void instInstDoc(InstitutionDoctorRequestRepository r, User institution, User doctor, LocalDateTime at) {
+        r.findByInstitutionAndDoctor(institution, doctor).orElseGet(() -> {
+            InstitutionDoctorRequest req = new InstitutionDoctorRequest();
+            req.setInstitution(institution); req.setDoctor(doctor);
+            req.setStatus("APPROVED");
+            req.setRequestedAt(at); req.setRespondedAt(at.plusMinutes(30));
+            return r.save(req);
+        });
+    }
+
+    private void seedRating(DoctorRatingRepository r, User patient, User doctor,
+            int stars, String comment, LocalDateTime at) {
+        r.findByPatientAndDoctor(patient, doctor).orElseGet(() -> {
+            DoctorRating rating = new DoctorRating();
+            rating.setPatient(patient); rating.setDoctor(doctor);
+            rating.setStars(stars); rating.setComment(comment);
+            rating.setCreatedAt(at);
+            return r.save(rating);
+        });
     }
 
     private void audit(AuditLogRepository r, User user, String action, String entity,

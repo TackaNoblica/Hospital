@@ -56,4 +56,7 @@ public class SymptomCheckin {
     private Boolean hasNightSweats;
 
     private Integer wellbeingScore;  // 1=very bad … 5=excellent
+
+    @Column(columnDefinition = "TEXT")
+    private String imageData;  // Base64 data URL (optional symptom photo)
 }

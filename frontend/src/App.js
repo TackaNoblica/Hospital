@@ -12,6 +12,7 @@ import PatientFindDoctorPage from './pages/PatientFindDoctorPage';
 import ChatPage              from './pages/ChatPage';
 import PatientHealthPage     from './pages/PatientHealthPage';
 import DrMegiPage            from './pages/DrMegiPage';
+import InstitutionDashboard  from './pages/InstitutionDashboard';
 import ChatBot               from './components/ChatBot';
 
 function RequireAuth({ children }) {
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/chat"             element={<RequireAuth><ChatPage /></RequireAuth>} />
         <Route path="/health"           element={<RequireAuth><PatientHealthPage /></RequireAuth>} />
         <Route path="/dr-megi"          element={<RequireAuth><DrMegiPage /></RequireAuth>} />
+        <Route path="/institution"      element={<RequireAuth><InstitutionDashboard /></RequireAuth>} />
         <Route path="*"                 element={<Navigate to="/" replace />} />
       </Routes>
       <ChatBot />

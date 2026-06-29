@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
+import axios from 'axios';
 import client from '../api/client';
 import Sidebar from '../components/Sidebar';
+
+const api = (path, opts = {}) =>
+  axios({
+    url: `http://localhost:8081${path}`,
+    headers: { Authorization: `Bearer ${localStorage.getItem('careafterToken')}` },
+    ...opts,
+  });
 
 const fmtDate = (iso) => {
   if (!iso) return '';
@@ -23,16 +31,22 @@ const fmtRelative = (iso) => {
 };
 
 const TYPE_META = {
-  ALERT:               { icon: '🚨', label: 'Upozorenje',   color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
-  APPOINTMENT:         { icon: '📅', label: 'Pregled',       color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
-  REMINDER:            { icon: '⏰', label: 'Podsetnik',     color: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
-  INFO:                { icon: 'ℹ️', label: 'Informacija',   color: '#0ea5e9', bg: '#f0f9ff', border: '#bae6fd' },
-  UPDATE:              { icon: '📋', label: 'Azuriranje',    color: '#10b981', bg: '#f0fdf4', border: '#bbf7d0' },
-  MEDICATION_REMINDER: { icon: '💊', label: 'Terapija',      color: '#10b981', bg: '#ecfdf5', border: '#a7f3d0' },
-  ALARM_CHECKIN:       { icon: '🚨', label: 'Alarm',         color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
-  WARN_CHECKIN:        { icon: '⚠️', label: 'Upozorenje',    color: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
-  INFO_CHECKIN:        { icon: '📋', label: 'Dekurzus',      color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
-  URGENT_MESSAGE:      { icon: '💬', label: 'Hitna poruka',  color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
+  ALERT:                { icon: '🚨', label: 'Upozorenje',       color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
+  APPOINTMENT:          { icon: '📅', label: 'Pregled',           color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
+  REMINDER:             { icon: '⏰', label: 'Podsetnik',         color: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
+  INFO:                 { icon: 'ℹ️', label: 'Informacija',       color: '#0ea5e9', bg: '#f0f9ff', border: '#bae6fd' },
+  UPDATE:               { icon: '📋', label: 'Azuriranje',        color: '#10b981', bg: '#f0fdf4', border: '#bbf7d0' },
+  MEDICATION_REMINDER:  { icon: '💊', label: 'Terapija',          color: '#10b981', bg: '#ecfdf5', border: '#a7f3d0' },
+  ALARM_CHECKIN:        { icon: '🚨', label: 'Alarm',             color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
+  WARN_CHECKIN:         { icon: '⚠️', label: 'Upozorenje',        color: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
+  INFO_CHECKIN:         { icon: '📋', label: 'Dekurzus',          color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
+  URGENT_MESSAGE:       { icon: '💬', label: 'Hitna poruka',      color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
+  RATE_DOCTOR:          { icon: '⭐', label: 'Ocenite lekara',    color: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
+  REPORT:               { icon: '📢', label: 'Prijava',           color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
+  WARNING:              { icon: '⚠️', label: 'Upozorenje',        color: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
+  BAN:                  { icon: '🚫', label: 'Zabrana profila',   color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
+  INSTITUTION_REQUEST:  { icon: '🏥', label: 'Zahtev ustanove',   color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
+  INSTITUTION_APPROVED: { icon: '✅', label: 'Zahtev prihvacen',  color: '#10b981', bg: '#f0fdf4', border: '#bbf7d0' },
 };
 
 const fallbackMeta = { icon: '🔔', label: 'Obavestenje', color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' };
@@ -44,11 +58,16 @@ const getMeta = (n) => {
 };
 
 export default function NotificationsPage() {
-  const [notifs,  setNotifs]  = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState('');
-  const [filter,  setFilter]  = useState('ALL');
-  const [toast,   setToast]   = useState('');
+  const [notifs,       setNotifs]       = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState('');
+  const [filter,       setFilter]       = useState('ALL');
+  const [toast,        setToast]        = useState('');
+  const [ratingModal,  setRatingModal]  = useState(null); // { notifId, doctorId, doctorName }
+  const [ratingStars,  setRatingStars]  = useState(0);
+  const [ratingHover,  setRatingHover]  = useState(0);
+  const [ratingComment,setRatingComment]= useState('');
+  const [savingRating, setSavingRating] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -83,6 +102,21 @@ export default function NotificationsPage() {
     } catch {
       setNotifs((prev) => prev.map((n) => ({ ...n, isRead: true })));
       showToast('Azurirano lokalno.');
+    }
+  };
+
+  const submitRating = async () => {
+    if (!ratingStars || !ratingModal) return;
+    setSavingRating(true);
+    try {
+      await api('/api/ratings', { method: 'post', data: { doctorId: ratingModal.doctorId, stars: ratingStars, comment: ratingComment } });
+      await markRead(ratingModal.notifId);
+      setRatingModal(null); setRatingStars(0); setRatingComment('');
+      showToast('Ocena je sačuvana! Hvala Vam.');
+    } catch {
+      showToast('Greška pri čuvanju ocene.');
+    } finally {
+      setSavingRating(false);
     }
   };
 
@@ -177,7 +211,20 @@ export default function NotificationsPage() {
                         <span className="notif-time" title={fmtDate(n.createdAt)}>{fmtRelative(n.createdAt)}</span>
                       </div>
                       <div className="notif-message">{n.message}</div>
-                      {!n.isRead && (
+                      {n.type === 'RATE_DOCTOR' && !n.isRead && (
+                        <button
+                          className="btn btn-primary btn-sm"
+                          style={{ marginTop: 8, fontSize: 12.5 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRatingModal({ notifId: n.id, doctorId: n.relatedUserId, doctorName: n.title.replace('Ocenite lekara: ', '') });
+                            setRatingStars(0); setRatingHover(0); setRatingComment('');
+                          }}
+                        >
+                          ⭐ Ocenite lekara
+                        </button>
+                      )}
+                      {!n.isRead && n.type !== 'RATE_DOCTOR' && (
                         <button
                           className="notif-read-btn"
                           onClick={(e) => { e.stopPropagation(); markRead(n.id); }}
@@ -195,6 +242,59 @@ export default function NotificationsPage() {
         </div>
       </div>
       {toast && <div className="toast">✓ {toast}</div>}
+
+      {ratingModal && (
+        <div style={{ position: 'fixed', inset: 0, background: '#00000077', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="card" style={{ width: 380, padding: '32px 28px 24px', textAlign: 'center' }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>⭐</div>
+            <h3 style={{ marginBottom: 6 }}>Ocenite lekara</h3>
+            <p style={{ fontSize: 13.5, color: 'var(--muted)', marginBottom: 24 }}>{ratingModal.doctorName}</p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 20 }}>
+              {[1,2,3,4,5].map((s) => (
+                <span key={s}
+                  onMouseEnter={() => setRatingHover(s)}
+                  onMouseLeave={() => setRatingHover(0)}
+                  onClick={() => setRatingStars(s)}
+                  style={{
+                    fontSize: 38, cursor: 'pointer', lineHeight: 1,
+                    color: s <= (ratingHover || ratingStars) ? '#f59e0b' : '#d1d5db',
+                    transition: 'color 0.1s',
+                  }}>
+                  ★
+                </span>
+              ))}
+            </div>
+            {ratingStars > 0 && (
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#f59e0b', marginBottom: 16 }}>
+                {['', 'Loše', 'Ispod proseka', 'Prosečno', 'Dobro', 'Odlično'][ratingStars]}
+              </div>
+            )}
+            <textarea
+              placeholder="Ostavite komentar (opciono)..."
+              value={ratingComment}
+              onChange={(e) => setRatingComment(e.target.value)}
+              rows={3}
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '10px 12px',
+                border: '1.5px solid var(--border)', borderRadius: 10,
+                fontSize: 13.5, resize: 'vertical', marginBottom: 20,
+                background: 'var(--surface)', color: 'var(--text)',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }}
+                onClick={() => setRatingModal(null)}>
+                Otkaži
+              </button>
+              <button className="btn btn-primary" style={{ flex: 1 }}
+                disabled={!ratingStars || savingRating}
+                onClick={submitRating}>
+                {savingRating ? 'Čuvanje...' : 'Pošalji ocenu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

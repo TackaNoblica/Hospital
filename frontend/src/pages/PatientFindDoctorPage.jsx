@@ -23,10 +23,12 @@ const STATUS_META = {
 export default function PatientFindDoctorPage() {
   const [doctors,  setDoctors]  = useState([]);
   const [requests, setRequests] = useState([]);
+  const [ratings,  setRatings]  = useState({}); // { doctorId: { avgStars, count } }
   const [loading,  setLoading]  = useState(true);
   const [toast,    setToast]    = useState('');
   const [toastOk,  setToastOk]  = useState(true);
   const [sending,  setSending]  = useState(null);
+  const [search,   setSearch]   = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,6 +39,13 @@ export default function PatientFindDoctorPage() {
       ]);
       setDoctors(dr.data);
       setRequests(rq.data);
+      // Load ratings for all doctors
+      const ratingResults = await Promise.all(
+        dr.data.map((d) => api(`/api/ratings/doctor/${d.id}`).then((r) => ({ id: d.id, ...r.data })).catch(() => ({ id: d.id })))
+      );
+      const map = {};
+      ratingResults.forEach((r) => { map[r.id] = r; });
+      setRatings(map);
     } finally {
       setLoading(false);
     }
@@ -126,6 +135,31 @@ export default function PatientFindDoctorPage() {
             <span>Posaljite zahtev lekaru — kada prihvati, mozete pratiti jedan drugog i komunicirati u chatu.</span>
           </div>
 
+          {/* Search bar */}
+          <div style={{ marginBottom: 20, display: 'flex', gap: 10 }}>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16, pointerEvents: 'none' }}>🔍</span>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Pretražite po imenu ili ustanovi..."
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  padding: '10px 14px 10px 38px',
+                  border: '1.5px solid var(--border)', borderRadius: 10,
+                  fontSize: 14, background: 'var(--surface)',
+                  color: 'var(--text)', outline: 'none',
+                }}
+              />
+            </div>
+            {search && (
+              <button onClick={() => setSearch('')}
+                style={{ padding: '10px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: 13, color: 'var(--muted)' }}>
+                Obriši
+              </button>
+            )}
+          </div>
+
           {loading ? (
             <div className="loading">Ucitavanje lekara...</div>
           ) : doctors.length === 0 ? (
@@ -136,7 +170,14 @@ export default function PatientFindDoctorPage() {
             </div>
           ) : (
             <div className="patients-grid">
-              {doctors.map((doc, idx) => {
+              {doctors.filter((doc) => {
+                const q = search.trim().toLowerCase();
+                if (!q) return true;
+                const name = `${doc.firstName ?? ''} ${doc.lastName ?? ''}`.toLowerCase();
+                const specialty = (doc.specialty ?? 'Internista — Specijalista pulmologije').toLowerCase();
+                const hospital = (doc.hospital ?? 'Klinika za pulmologiju, KBC').toLowerCase();
+                return name.includes(q) || specialty.includes(q) || hospital.includes(q);
+              }).map((doc, idx) => {
                 const req  = getReq(doc.id);
                 const meta = req ? STATUS_META[req.status] : null;
                 const g    = DOCTOR_COLORS[idx % DOCTOR_COLORS.length];
@@ -171,11 +212,17 @@ export default function PatientFindDoctorPage() {
                           {doc.firstName} {doc.lastName}
                         </div>
                         <div style={{ fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, marginTop: 3 }}>
-                          Internista — Specijalista pulmologije
+                          {doc.specialty ?? 'Internista — Specijalista pulmologije'}
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                          Klinika za pulmologiju, KBC
+                          {doc.hospital ?? 'Klinika za pulmologiju, KBC'}
                         </div>
+                        {ratings[doc.id]?.avgStars && (
+                          <div style={{ fontSize: 12, color: '#f59e0b', fontWeight: 700, marginTop: 4 }}>
+                            {'★'.repeat(Math.round(ratings[doc.id].avgStars))}{'☆'.repeat(5 - Math.round(ratings[doc.id].avgStars))}
+                            {' '}<span style={{ color: 'var(--muted)', fontWeight: 500 }}>{ratings[doc.id].avgStars} ({ratings[doc.id].count})</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Status badge */}

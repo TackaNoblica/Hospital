@@ -90,6 +90,10 @@ const Ico = {
 };
 
 const ROLE_ROUTES = {
+  HEALTH_INSTITUTION: [
+    { to: '/institution',    label: 'Kontrolna tabla', icon: Ico.dashboard                       },
+    { to: '/notifications',  label: 'Obavestenja',     icon: Ico.bell, badge: 'notifCount'       },
+  ],
   DOCTOR: [
     { to: '/dashboard',        label: 'Tabla',           icon: Ico.dashboard, badge: 'alertCount'   },
     { to: '/patients',         label: 'Pacijenti',        icon: Ico.patients                        },
@@ -125,6 +129,7 @@ const ROLE_LABEL = {
   FAMILY_MEMBER: 'Clan porodice',
   FAMILY: 'Clan porodice',
   ADMIN: 'Administrator',
+  HEALTH_INSTITUTION: 'Zdravstvena ustanova',
 };
 
 function getInitials(name) {

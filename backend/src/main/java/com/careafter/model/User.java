@@ -2,7 +2,6 @@ package com.careafter.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -10,7 +9,6 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "users")
 @NoArgsConstructor
-@AllArgsConstructor
 public class User {
 
     @Id
@@ -28,4 +26,17 @@ public class User {
     private Role role;
 
     private Boolean active = true;
+
+    private String specialty;
+    private String hospital;
+
+    private Integer warningCount = 0;
+    private java.time.LocalDateTime bannedUntil;
+
+    public User(Long id, String firstName, String lastName, String email,
+                String passwordHash, Role role, Boolean active) {
+        this.id = id; this.firstName = firstName; this.lastName = lastName;
+        this.email = email; this.passwordHash = passwordHash;
+        this.role = role; this.active = active;
+    }
 }
