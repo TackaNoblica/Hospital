@@ -20,6 +20,77 @@ const STATUS_META = {
   REJECTED: { label: 'Odbijeno',      color: '#dc2626', bg: '#fee2e2', border: '#fecaca', dot: '#ef4444' },
 };
 
+function getEmailFromToken() {
+  try {
+    return JSON.parse(atob(localStorage.getItem('careafterToken').split('.')[1])).sub || '';
+  } catch { return ''; }
+}
+
+function cardinalSpline(pts, t = 0.4) {
+  if (pts.length < 2) return '';
+  const n = pts.length;
+  let d = `M ${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(n - 1, i + 2)];
+    const cp1x = p1[0] + (p2[0] - p0[0]) * t / 3;
+    const cp1y = p1[1] + (p2[1] - p0[1]) * t / 3;
+    const cp2x = p2[0] - (p3[0] - p1[0]) * t / 3;
+    const cp2y = p2[1] - (p3[1] - p1[1]) * t / 3;
+    d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
+function RatingBellCurve({ ratings }) {
+  const W = 280, H = 110, pL = 14, pR = 14, pT = 18, pB = 26;
+  const cW = W - pL - pR, cH = H - pT - pB, barW = cW / 5;
+  const COLORS = { 1: '#ef4444', 2: '#f97316', 3: '#eab308', 4: '#84cc16', 5: '#22c55e' };
+  const counts = [1, 2, 3, 4, 5].map((s) => (ratings || []).filter((r) => r.stars === s).length);
+  const maxC = Math.max(...counts, 1);
+  const xOf = (i) => pL + i * barW + barW / 2;
+  const yOf = (c) => pT + (1 - c / maxC) * cH;
+  const pts = counts.map((c, i) => [xOf(i), yOf(c)]);
+  const curve = cardinalSpline(pts);
+  const areaPath = curve + ` L ${pts[4][0].toFixed(1)},${(pT + cH).toFixed(1)} L ${pts[0][0].toFixed(1)},${(pT + cH).toFixed(1)} Z`;
+  const total = counts.reduce((a, b) => a + b, 0);
+  return (
+    <div>
+      <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6, textAlign: 'center' }}>
+        Raspored ocena · {total} {total === 1 ? 'ocena' : 'ocena'}
+      </div>
+      <svg width={W} height={H} style={{ display: 'block', margin: '0 auto', overflow: 'visible' }}>
+        <defs>
+          <linearGradient id="bellGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.03" />
+          </linearGradient>
+        </defs>
+        {curve && <path d={areaPath} fill="url(#bellGrad)" />}
+        {counts.map((c, i) => {
+          const bx = pL + i * barW + 3;
+          const by = yOf(c);
+          return (
+            <g key={i}>
+              <rect x={bx} y={by} width={barW - 6} height={pT + cH - by} fill={COLORS[i + 1]} opacity={0.2} rx={3} />
+              {c > 0 && <text x={xOf(i)} y={by - 4} textAnchor="middle" fontSize={10} fill={COLORS[i + 1]} fontWeight="700">{c}</text>}
+            </g>
+          );
+        })}
+        {curve && <path d={curve} fill="none" stroke="#f59e0b" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />}
+        {pts.map(([x, y], i) => (
+          <circle key={i} cx={x} cy={y} r={4} fill={COLORS[i + 1]} stroke="white" strokeWidth={1.5} />
+        ))}
+        {[1, 2, 3, 4, 5].map((s, i) => (
+          <text key={s} x={xOf(i)} y={H - 4} textAnchor="middle" fontSize={11} fill="#9ca3af">{s}★</text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 export default function PatientFindDoctorPage() {
   const [doctors,  setDoctors]  = useState([]);
   const [requests, setRequests] = useState([]);
@@ -29,6 +100,16 @@ export default function PatientFindDoctorPage() {
   const [toastOk,  setToastOk]  = useState(true);
   const [sending,  setSending]  = useState(null);
   const [search,   setSearch]   = useState('');
+  const [ratingTarget,    setRatingTarget]    = useState(null);
+  const [ratingModalDist, setRatingModalDist] = useState([]);
+  const [ratingStars,     setRatingStars]     = useState(0);
+  const [ratingHover,     setRatingHover]     = useState(0);
+  const [ratingComment,   setRatingComment]   = useState('');
+  const [loadingDist,     setLoadingDist]     = useState(false);
+  const [savingRating,    setSavingRating]    = useState(false);
+  const [reportTarget,    setReportTarget]    = useState(null);
+  const [reportReason,    setReportReason]    = useState('');
+  const [sendingReport,   setSendingReport]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,6 +162,45 @@ export default function PatientFindDoctorPage() {
     } catch {
       showToast('Greška pri otkazivanju', false);
     }
+  };
+
+  const openRatingModal = async (doc) => {
+    setRatingTarget(doc); setRatingStars(0); setRatingHover(0); setRatingComment('');
+    setLoadingDist(true);
+    try {
+      const res = await api(`/api/ratings/doctor/${doc.id}`);
+      const fullRatings = res.data.ratings || [];
+      setRatingModalDist(fullRatings);
+      const myEmail = getEmailFromToken();
+      const existing = fullRatings.find((r) => r.patient?.email === myEmail);
+      if (existing) { setRatingStars(existing.stars); setRatingComment(existing.comment || ''); }
+    } catch { setRatingModalDist([]); }
+    finally { setLoadingDist(false); }
+  };
+
+  const submitRating = async () => {
+    if (!ratingStars || !ratingTarget) return;
+    setSavingRating(true);
+    try {
+      await api('/api/ratings', { method: 'post', data: { doctorId: ratingTarget.id, stars: ratingStars, comment: ratingComment } });
+      showToast('Ocena je sačuvana! Hvala Vam.', true);
+      setRatingTarget(null); setRatingStars(0); setRatingComment('');
+      load();
+    } catch { showToast('Greška pri čuvanju ocene.', false); }
+    finally { setSavingRating(false); }
+  };
+
+  const openReportModal = (doc) => { setReportTarget(doc); setReportReason(''); };
+
+  const submitReport = async () => {
+    if (!reportReason.trim() || !reportTarget) return;
+    setSendingReport(true);
+    try {
+      await api('/api/reports', { method: 'post', data: { reportedUserId: reportTarget.id, reportType: 'PATIENT_REPORTS_DOCTOR', reason: reportReason } });
+      showToast('Prijava je podneta.', true);
+      setReportTarget(null); setReportReason('');
+    } catch (e) { showToast(e.response?.data?.error ?? 'Greška pri podnošenju prijave.', false); }
+    finally { setSendingReport(false); }
   };
 
   const approvedCount = requests.filter((r) => r.status === 'APPROVED').length;
@@ -260,11 +380,22 @@ export default function PatientFindDoctorPage() {
                           </button>
                         )}
                         {req?.status === 'APPROVED' && (
-                          <div style={{
-                            padding: '10px 0', fontSize: 13, fontWeight: 600,
-                            color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                          }}>
-                            ✓ Lekar Vas aktivno prati
+                          <div style={{ width: '100%' }}>
+                            <div style={{ textAlign: 'center', fontSize: 12, color: '#059669', fontWeight: 600, marginBottom: 8 }}>
+                              ✓ Lekar Vas aktivno prati
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                onClick={() => openRatingModal(doc)}
+                                style={{ flex: 1, padding: '7px 0', border: '1.5px solid #fde68a', borderRadius: 8, background: '#fffbeb', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                                ⭐ Oceni
+                              </button>
+                              <button
+                                onClick={() => openReportModal(doc)}
+                                style={{ flex: 1, padding: '7px 0', border: '1.5px solid #fecaca', borderRadius: 8, background: '#fff5f5', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                                🚩 Prijavi
+                              </button>
+                            </div>
                           </div>
                         )}
                         {req?.status === 'REJECTED' && (
@@ -288,6 +419,95 @@ export default function PatientFindDoctorPage() {
       {toast && (
         <div className="toast" style={{ background: toastOk ? '#10b981' : '#ef4444' }}>
           {toastOk ? '✓' : '✕'} {toast}
+        </div>
+      )}
+
+      {/* ── Rating modal ── */}
+      {ratingTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: '#00000077', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setRatingTarget(null)}>
+          <div className="card" style={{ width: 360, padding: '28px 24px 22px', textAlign: 'center' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 36, marginBottom: 4 }}>⭐</div>
+            <h3 style={{ marginBottom: 4 }}>Ocenite lekara</h3>
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 18 }}>
+              Dr. {ratingTarget.firstName} {ratingTarget.lastName}
+            </p>
+
+            {/* Bell curve */}
+            <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: '12px 8px', marginBottom: 18 }}>
+              {loadingDist ? (
+                <div style={{ height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 13 }}>
+                  Učitavanje...
+                </div>
+              ) : (
+                <RatingBellCurve ratings={ratingModalDist} />
+              )}
+            </div>
+
+            {/* Stars */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 14 }}>
+              {[1, 2, 3, 4, 5].map((s) => (
+                <span key={s}
+                  onMouseEnter={() => setRatingHover(s)}
+                  onMouseLeave={() => setRatingHover(0)}
+                  onClick={() => setRatingStars(s)}
+                  style={{ fontSize: 36, cursor: 'pointer', lineHeight: 1, color: s <= (ratingHover || ratingStars) ? '#f59e0b' : '#d1d5db', transition: 'color .1s' }}>
+                  ★
+                </span>
+              ))}
+            </div>
+            {ratingStars > 0 && (
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#f59e0b', marginBottom: 14 }}>
+                {['', 'Loše', 'Ispod proseka', 'Prosečno', 'Dobro', 'Odlično'][ratingStars]}
+              </div>
+            )}
+            <textarea
+              placeholder="Ostavite komentar (opciono)..."
+              value={ratingComment}
+              onChange={(e) => setRatingComment(e.target.value)}
+              rows={3}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13.5, resize: 'vertical', marginBottom: 18, background: 'var(--surface)', color: 'var(--text)' }}
+            />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setRatingTarget(null)}>Otkaži</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} disabled={!ratingStars || savingRating} onClick={submitRating}>
+                {savingRating ? 'Čuvanje...' : 'Pošalji ocenu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Report modal ── */}
+      {reportTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: '#00000077', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setReportTarget(null)}>
+          <div className="card" style={{ width: 400, padding: '28px 28px 24px' }}
+            onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: 8, color: '#ef4444' }}>🚩 Prijava lekara</h3>
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 6 }}>
+              Dr. {reportTarget.firstName} {reportTarget.lastName}
+            </p>
+            <p style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 18 }}>
+              Zdravstvena ustanova će pregledati Vašu prijavu. Prva prijava šalje upozorenje lekaru.
+            </p>
+            <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Razlog prijave:</label>
+            <textarea
+              placeholder="Opišite problem — neprofesionalno ponašanje, neodgovaranje na poruke..."
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              rows={4}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13.5, resize: 'vertical', marginBottom: 20, background: 'var(--surface)', color: 'var(--text)' }}
+            />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setReportTarget(null)}>Otkaži</button>
+              <button className="btn btn-primary" style={{ flex: 1, background: '#ef4444', borderColor: '#ef4444' }}
+                disabled={!reportReason.trim() || sendingReport} onClick={submitReport}>
+                {sendingReport ? 'Slanje...' : 'Pošalji prijavu'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

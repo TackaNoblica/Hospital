@@ -17,6 +17,71 @@ function getEmailFromToken() {
   } catch { return ''; }
 }
 
+function cardinalSpline(pts, t = 0.4) {
+  if (pts.length < 2) return '';
+  const n = pts.length;
+  let d = `M ${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(n - 1, i + 2)];
+    const cp1x = p1[0] + (p2[0] - p0[0]) * t / 3;
+    const cp1y = p1[1] + (p2[1] - p0[1]) * t / 3;
+    const cp2x = p2[0] - (p3[0] - p1[0]) * t / 3;
+    const cp2y = p2[1] - (p3[1] - p1[1]) * t / 3;
+    d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
+function RatingBellCurve({ ratings }) {
+  const W = 280, H = 110, pL = 14, pR = 14, pT = 18, pB = 26;
+  const cW = W - pL - pR, cH = H - pT - pB, barW = cW / 5;
+  const COLORS = { 1: '#ef4444', 2: '#f97316', 3: '#eab308', 4: '#84cc16', 5: '#22c55e' };
+  const counts = [1, 2, 3, 4, 5].map((s) => (ratings || []).filter((r) => r.stars === s).length);
+  const maxC = Math.max(...counts, 1);
+  const xOf = (i) => pL + i * barW + barW / 2;
+  const yOf = (c) => pT + (1 - c / maxC) * cH;
+  const pts = counts.map((c, i) => [xOf(i), yOf(c)]);
+  const curve = cardinalSpline(pts);
+  const areaPath = curve + ` L ${pts[4][0].toFixed(1)},${(pT + cH).toFixed(1)} L ${pts[0][0].toFixed(1)},${(pT + cH).toFixed(1)} Z`;
+  const total = counts.reduce((a, b) => a + b, 0);
+  return (
+    <div>
+      <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6, textAlign: 'center' }}>
+        Raspored ocena · {total} {total === 1 ? 'ocena' : 'ocena'}
+      </div>
+      <svg width={W} height={H} style={{ display: 'block', margin: '0 auto', overflow: 'visible' }}>
+        <defs>
+          <linearGradient id="bellGradChat" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.03" />
+          </linearGradient>
+        </defs>
+        {curve && <path d={areaPath} fill="url(#bellGradChat)" />}
+        {counts.map((c, i) => {
+          const bx = pL + i * barW + 3;
+          const by = yOf(c);
+          return (
+            <g key={i}>
+              <rect x={bx} y={by} width={barW - 6} height={pT + cH - by} fill={COLORS[i + 1]} opacity={0.2} rx={3} />
+              {c > 0 && <text x={xOf(i)} y={by - 4} textAnchor="middle" fontSize={10} fill={COLORS[i + 1]} fontWeight="700">{c}</text>}
+            </g>
+          );
+        })}
+        {curve && <path d={curve} fill="none" stroke="#f59e0b" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />}
+        {pts.map(([x, y], i) => (
+          <circle key={i} cx={x} cy={y} r={4} fill={COLORS[i + 1]} stroke="white" strokeWidth={1.5} />
+        ))}
+        {[1, 2, 3, 4, 5].map((s, i) => (
+          <text key={s} x={xOf(i)} y={H - 4} textAnchor="middle" fontSize={11} fill="#9ca3af">{s}★</text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 function fmtTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -70,6 +135,11 @@ export default function ChatPage() {
   const [reportReason,   setReportReason]   = useState('');
   const [sendingReport,  setSendingReport]  = useState(false);
   const [reportToast,    setReportToast]    = useState('');
+  const [chatRateModal,  setChatRateModal]  = useState(null); // { doctorId, doctorName, ratings }
+  const [chatRateStars,  setChatRateStars]  = useState(0);
+  const [chatRateHover,  setChatRateHover]  = useState(0);
+  const [chatRateComment,setChatRateComment]= useState('');
+  const [savingChatRate, setSavingChatRate] = useState(false);
 
   const messagesEndRef = useRef(null);
   const pollRef        = useRef(null);
@@ -198,6 +268,37 @@ export default function ChatPage() {
       setReportToast('Greška pri slanju prijave.');
       setTimeout(() => setReportToast(''), 3000);
     } finally { setSendingReport(false); }
+  };
+
+  const openChatRating = async () => {
+    if (!activeConv) return;
+    const doctor = activeConv.participants?.find((p) => p.role === 'DOCTOR');
+    if (!doctor) return;
+    setChatRateStars(0); setChatRateHover(0); setChatRateComment('');
+    try {
+      const res = await api(`/api/ratings/doctor/${doctor.id}`);
+      const fullRatings = res.data.ratings || [];
+      const myEmail = getEmailFromToken();
+      const existing = fullRatings.find((r) => r.patient?.email === myEmail);
+      if (existing) { setChatRateStars(existing.stars); setChatRateComment(existing.comment || ''); }
+      setChatRateModal({ doctorId: doctor.id, doctorName: `${doctor.firstName} ${doctor.lastName}`, ratings: fullRatings });
+    } catch {
+      setChatRateModal({ doctorId: doctor.id, doctorName: `${doctor.firstName} ${doctor.lastName}`, ratings: [] });
+    }
+  };
+
+  const submitChatRating = async () => {
+    if (!chatRateStars || !chatRateModal) return;
+    setSavingChatRate(true);
+    try {
+      await api('/api/ratings', { method: 'post', data: { doctorId: chatRateModal.doctorId, stars: chatRateStars, comment: chatRateComment } });
+      setChatRateModal(null); setChatRateStars(0); setChatRateComment('');
+      setReportToast('Ocena je sačuvana! Hvala Vam.');
+      setTimeout(() => setReportToast(''), 3000);
+    } catch {
+      setReportToast('Greška pri čuvanju ocene.');
+      setTimeout(() => setReportToast(''), 3000);
+    } finally { setSavingChatRate(false); }
   };
 
   const openGroupModal = async () => {
@@ -334,7 +435,20 @@ export default function ChatPage() {
                       {muteStatus ? '🔔 Odmutuj pacijenta' : '🔕 Mutiraj pacijenta'}
                     </button>
                   )}
-                  {/* Patient: report doctor */}
+                  {/* Patient: rate + report doctor */}
+                  {role === 'PATIENT' && activeConv?.participants?.some((p) => p.role === 'DOCTOR') && (
+                    <button
+                      onClick={openChatRating}
+                      title="Oceni lekara"
+                      style={{
+                        background: 'none', border: '1.5px solid #fde68a', borderRadius: 8,
+                        cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                        color: '#d97706', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 5,
+                      }}
+                    >
+                      ⭐ Oceni lekara
+                    </button>
+                  )}
                   {role === 'PATIENT' && activeConv?.participants?.some((p) => p.role === 'DOCTOR') && (
                     <button
                       onClick={() => { setReportModal(true); setReportReason(''); }}
@@ -510,6 +624,53 @@ export default function ChatPage() {
                 disabled={!reportReason.trim() || sendingReport}
                 onClick={submitReport}>
                 {sendingReport ? 'Slanje...' : 'Pošalji prijavu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Rate doctor modal (chat) ── */}
+      {chatRateModal && (
+        <div style={{ position: 'fixed', inset: 0, background: '#00000077', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setChatRateModal(null)}>
+          <div className="card" style={{ width: 360, padding: '28px 24px 22px', textAlign: 'center' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 36, marginBottom: 4 }}>⭐</div>
+            <h3 style={{ marginBottom: 4 }}>Ocenite lekara</h3>
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 18 }}>
+              Dr. {chatRateModal.doctorName}
+            </p>
+            <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: '12px 8px', marginBottom: 18 }}>
+              <RatingBellCurve ratings={chatRateModal.ratings} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 14 }}>
+              {[1, 2, 3, 4, 5].map((s) => (
+                <span key={s}
+                  onMouseEnter={() => setChatRateHover(s)}
+                  onMouseLeave={() => setChatRateHover(0)}
+                  onClick={() => setChatRateStars(s)}
+                  style={{ fontSize: 36, cursor: 'pointer', lineHeight: 1, color: s <= (chatRateHover || chatRateStars) ? '#f59e0b' : '#d1d5db', transition: 'color .1s' }}>
+                  ★
+                </span>
+              ))}
+            </div>
+            {chatRateStars > 0 && (
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#f59e0b', marginBottom: 14 }}>
+                {['', 'Loše', 'Ispod proseka', 'Prosečno', 'Dobro', 'Odlično'][chatRateStars]}
+              </div>
+            )}
+            <textarea
+              placeholder="Ostavite komentar (opciono)..."
+              value={chatRateComment}
+              onChange={(e) => setChatRateComment(e.target.value)}
+              rows={3}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13.5, resize: 'vertical', marginBottom: 18, background: 'var(--surface)', color: 'var(--text)' }}
+            />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setChatRateModal(null)}>Otkaži</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} disabled={!chatRateStars || savingChatRate} onClick={submitChatRating}>
+                {savingChatRate ? 'Čuvanje...' : 'Pošalji ocenu'}
               </button>
             </div>
           </div>

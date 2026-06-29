@@ -519,7 +519,7 @@ function GaussianDistChart({ allAdherence, currentPatientId }) {
   return (
     <div className="card card-pad" style={{ marginBottom: 20 }}>
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>
-        Distribucija adherencije — poređenje pacijenata
+        Distribucija komplijanse — poređenje pacijenata
       </div>
       <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
         KDE kriva {n} pacijenata.
@@ -1197,7 +1197,7 @@ export default function PatientDetailPage() {
                     .catch(() => {});
                 }
               }}>
-              💊 Adherence
+              💊 Komplijansa
             </button>
             <button className={`tab ${tab === 'megi' ? 'active' : ''}`} onClick={() => setTab('megi')}>
               👩‍⚕️ Dr. Megi
@@ -1480,7 +1480,7 @@ export default function PatientDetailPage() {
                         <div className="stat-num" style={{ color: adherence.adherencePct >= 80 ? '#10b981' : adherence.adherencePct >= 50 ? '#f59e0b' : '#ef4444' }}>
                           {adherence.adherencePct}%
                         </div>
-                        <div className="stat-label" style={{ color: 'var(--muted)', opacity: 1 }}>Adherence (30 dana)</div>
+                        <div className="stat-label" style={{ color: 'var(--muted)', opacity: 1 }}>Komplijansa (30 dana)</div>
                       </div>
                       <div className="stat-card white">
                         <div className="stat-icon">📅</div>

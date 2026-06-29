@@ -17,7 +17,7 @@ const RISK_LBL   = { GREEN: 'Nizak',   YELLOW: 'Srednji', RED: 'Visok' };
 const MMRC = [
   { v: 0, label: 'Samo pri intenzivnom naporu',              color: '#10b981' },
   { v: 1, label: 'Brzim hodom ili hodanjem uzbrdo',          color: '#10b981' },
-  { v: 2, label: 'Sporiji hod od vršnjaka ili moram da stanem', color: '#f59e0b' },
+  { v: 2, label: 'Sporiji hod, moram da stanem', color: '#f59e0b' },
   { v: 3, label: 'Stajem posle ~100m ili par minuta hoda',   color: '#f97316' },
   { v: 4, label: 'Predispnoičan u sobi, teškoće pri oblačenju', color: '#ef4444' },
 ];
@@ -49,7 +49,7 @@ const WELLBEING = [
 const EMPTY_FORM = {
   temperature: '', spO2: '', respiratoryRate: '',
   wellbeingScore: null,
-  hasCough: false, coughType: '', sputumColor: '', coughIntensity: 5,
+  hasCough: false, coughType: '', sputumColor: '', coughIntensity: 5, coughNote: '',
   breathingProblem: false, dyspneaLevel: null, hasWheezing: false,
   hasFatigue: false, hasNightSweats: false,
   generalWorsening: false, nausea: false, bleeding: false,
@@ -134,6 +134,7 @@ export default function PatientPage() {
         coughType:        form.hasCough ? (form.coughType || null) : null,
         sputumColor:      form.hasCough && form.coughType === 'PRODUCTIVE' ? (form.sputumColor || null) : null,
         coughIntensity:   form.hasCough ? Number(form.coughIntensity) : null,
+        coughNote:        form.hasCough ? (form.coughNote || null) : null,
         breathingProblem: form.breathingProblem,
         dyspneaLevel:     form.breathingProblem ? form.dyspneaLevel : null,
         hasWheezing:      form.breathingProblem ? form.hasWheezing : false,
@@ -176,7 +177,7 @@ export default function PatientPage() {
           <div className="page-head">
             <div>
               <h1 className="page-title">{firstName ? `Zdravo, ${firstName}` : 'Prijava simptoma'}</h1>
-              <p className="page-sub">Popunite dnevni dekurzus za plućnu patologiju.</p>
+              <p className="page-sub">Popunite dnevnu promenu stanja (dekurzus) za plućnu patologiju.</p>
             </div>
           </div>
 
@@ -297,6 +298,21 @@ export default function PatientPage() {
               <input className="slider" type="range" min="1" max="10" value={form.coughIntensity}
                 onChange={(e) => set('coughIntensity', e.target.value)} />
               <div className="slider-scale"><span>Blagi</span><span>Umereni</span><span>Jak, iscrpljujući</span></div>
+
+              <div className="dekurzus-sub-label" style={{ marginTop: 14 }}>Opišite kasalj (opciono)</div>
+              <textarea
+                placeholder="npr. uglavnom ujutru, suv, bez iskašljavanja..."
+                value={form.coughNote}
+                onChange={(e) => set('coughNote', e.target.value)}
+                rows={2}
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: '9px 12px',
+                  border: '1.5px solid var(--border)', borderRadius: 10,
+                  fontSize: 13.5, resize: 'vertical',
+                  background: 'var(--surface)', color: 'var(--text)',
+                  marginTop: 4,
+                }}
+              />
             </SectionToggle>
 
             {/* ── Section 3: Otežano disanje ── */}
@@ -399,7 +415,7 @@ export default function PatientPage() {
             </div>
 
             <button className="btn btn-primary btn-block btn-lg" onClick={submit} disabled={submitting || !patient} style={{ marginTop: 20 }}>
-              {submitting ? 'Slanje...' : 'Pošalji dnevni dekurzus'}
+              {submitting ? 'Slanje...' : 'Pošalji promenu stanja'}
             </button>
           </div>
 
@@ -430,7 +446,7 @@ export default function PatientPage() {
                             {c.temperature != null && <span className="checkin-val">🌡️ {c.temperature}°C</span>}
                             {c.spO2 != null && <span className="checkin-val" style={{ color: c.spO2 < 92 ? '#ef4444' : c.spO2 < 95 ? '#f59e0b' : undefined }}>O₂ {c.spO2}%</span>}
                             {c.respiratoryRate != null && <span className="checkin-val">💨 {c.respiratoryRate}/min</span>}
-                            {c.hasCough && <span className="checkin-val">🤧 {coughMap[c.coughType]||'Kasalj'}{c.sputumColor && ` — ${sputumMap[c.sputumColor]}`}</span>}
+                            {c.hasCough && <span className="checkin-val">🤧 {coughMap[c.coughType]||'Kasalj'}{c.sputumColor && ` — ${sputumMap[c.sputumColor]}`}{c.coughNote ? ` — "${c.coughNote}"` : ''}</span>}
                             {c.dyspneaLevel != null && <span className="checkin-val">🫁 mMRC {c.dyspneaLevel}: {dyspnMap[c.dyspneaLevel]}</span>}
                             {c.hasWheezing && <span className="checkin-val">〰️ Zviždanje</span>}
                             {c.wellbeingScore != null && <span className="checkin-val">{['','😩','😞','😐','🙂','😊'][c.wellbeingScore]} {c.wellbeingScore}/5</span>}

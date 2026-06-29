@@ -45,6 +45,8 @@ public class SymptomCheckin {
     private String  coughType;       // DRY | PRODUCTIVE
     private String  sputumColor;     // WHITE | YELLOW_GREEN | BLOODY
     private Integer coughIntensity;  // 1-10
+    @Column(columnDefinition = "TEXT")
+    private String  coughNote;
 
     private Integer dyspneaLevel;    // 0-4  mMRC scale
     private Boolean hasWheezing;

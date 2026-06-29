@@ -9,6 +9,140 @@ const api = (path, opts = {}) =>
     ...opts,
   });
 
+const DOC_COLORS = ['#6366f1', '#3b82f6', '#10b981', '#f97316', '#f43f5e', '#8b5cf6', '#06b6d4', '#ec4899'];
+
+function buildKde(data, xMin = 0.5, xMax = 5.5, steps = 350) {
+  const n = data.length;
+  if (n === 0) return [];
+  const mean = data.reduce((a, b) => a + b, 0) / n;
+  const variance = (n > 1 ? data.reduce((s, x) => s + (x - mean) ** 2, 0) / (n - 1) : 0.25);
+  const h = Math.max(0.18, Math.min(0.9, 1.06 * Math.sqrt(variance) * Math.pow(n, -0.2)));
+  const pts = [];
+  for (let i = 0; i <= steps; i++) {
+    const x = xMin + i * (xMax - xMin) / steps;
+    const density = data.reduce((s, xi) => s + Math.exp(-0.5 * ((x - xi) / h) ** 2) / (h * Math.sqrt(2 * Math.PI)), 0) / n;
+    pts.push([x, density]);
+  }
+  return pts;
+}
+
+function RatingKDE({ allRatings, doctorRatingMap, officialAvg }) {
+  const W = 640, H = 190, pL = 10, pR = 20, pT = 38, pB = 44;
+  const cW = W - pL - pR, cH = H - pT - pB;
+  const xMin = 0.5, xMax = 5.5;
+  const toSvgX = (x) => pL + ((x - xMin) / (xMax - xMin)) * cW;
+  const baseY = pT + cH;
+  const data = (allRatings || []).map((r) => r.stars);
+  const n = data.length;
+
+  if (n === 0) return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24, textAlign: 'center', color: 'var(--muted)', marginBottom: 24 }}>
+      Nema ocena za prikaz distribucije.
+    </div>
+  );
+
+  const mean = officialAvg != null ? Number(officialAvg) : (data.reduce((a, b) => a + b, 0) / n);
+  const kdePts = buildKde(data);
+  const maxD = Math.max(...kdePts.map((p) => p[1]), 0.01);
+  const toSvgY = (y) => pT + cH - (y / maxD) * cH;
+
+  const curvePath = kdePts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${toSvgX(x).toFixed(1)},${toSvgY(y).toFixed(1)}`).join(' ');
+  const areaPath  = curvePath + ` L${toSvgX(xMax).toFixed(1)},${baseY} L${toSvgX(xMin).toFixed(1)},${baseY} Z`;
+  const avgX = toSvgX(mean);
+
+  // Jitter dots at same star value
+  const byStars = {};
+  (allRatings || []).forEach((r) => { if (!byStars[r.stars]) byStars[r.stars] = []; byStars[r.stars].push(r); });
+  const dots = [];
+  Object.entries(byStars).forEach(([star, list]) => {
+    const k = list.length;
+    const spread = Math.min(0.28, (k - 1) * 0.07);
+    list.forEach((r, j) => {
+      const offset = k === 1 ? 0 : (j / (k - 1) - 0.5) * 2 * spread;
+      dots.push({ ...r, cx: toSvgX(Number(star) + offset) });
+    });
+  });
+
+  const pctile = Math.round((data.filter((x) => x <= mean).length / n) * 100);
+  const xTicks = [1, 2, 3, 4, 5];
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px 24px 14px', marginBottom: 28 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>
+        Distribucija ocena — poređenje lekara
+      </div>
+      <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 14 }}>
+        KDE kriva {n} {n === 1 ? 'ocene' : 'ocena'}. Prosečna ocena je{' '}
+        <strong style={{ color: 'var(--text)' }}>{mean.toFixed(1)}★</strong>{' '}
+        ({pctile}. percentil).
+      </div>
+
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
+        <defs>
+          <linearGradient id="kdeGradInst" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#6366f1" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#6366f1" stopOpacity="0.03" />
+          </linearGradient>
+        </defs>
+
+        {/* Baseline */}
+        <line x1={pL} y1={baseY} x2={W - pR} y2={baseY} stroke="#e5e7eb" strokeWidth={1.5} />
+
+        {/* Dashed vertical grid at each star */}
+        {xTicks.map((s) => (
+          <line key={s} x1={toSvgX(s)} y1={pT} x2={toSvgX(s)} y2={baseY}
+            stroke="#e5e7eb" strokeWidth={1} strokeDasharray="3,4" />
+        ))}
+
+        {/* Area fill */}
+        <path d={areaPath} fill="url(#kdeGradInst)" />
+
+        {/* KDE curve */}
+        <path d={curvePath} fill="none" stroke="#6366f1" strokeWidth={2.5} strokeLinejoin="round" />
+
+        {/* Average dashed marker line */}
+        <line x1={avgX} y1={pT - 4} x2={avgX} y2={baseY}
+          stroke="#6366f1" strokeWidth={1.5} strokeDasharray="5,4" />
+
+        {/* ▼ label at top */}
+        <text x={avgX} y={pT - 14} textAnchor="middle" fontSize={12} fontWeight="700" fill="#6366f1">
+          ▼ {mean.toFixed(1)}★
+        </text>
+
+        {/* Dots for individual ratings */}
+        {dots.map((d, i) => (
+          <circle key={i} cx={d.cx} cy={baseY} r={5}
+            fill={d.color} stroke="white" strokeWidth={1.5} opacity={0.85} />
+        ))}
+
+        {/* X-axis ticks + labels */}
+        {xTicks.map((s) => (
+          <g key={s}>
+            <line x1={toSvgX(s)} y1={baseY} x2={toSvgX(s)} y2={baseY + 5} stroke="#9ca3af" strokeWidth={1.5} />
+            <text x={toSvgX(s)} y={baseY + 18} textAnchor="middle" fontSize={12} fill="#9ca3af">{s}★</text>
+          </g>
+        ))}
+
+        {/* Range labels */}
+        <text x={toSvgX(1)} y={baseY + 32} textAnchor="middle" fontSize={11} fill="#d1d5db">loše</text>
+        <text x={toSvgX(5)} y={baseY + 32} textAnchor="middle" fontSize={11} fill="#d1d5db">odlično</text>
+      </svg>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', marginTop: 8 }}>
+        {Object.entries(doctorRatingMap || {}).filter(([, d]) => d.ratings && d.ratings.length > 0).map(([id, d]) => (
+          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: d.color, border: '1.5px solid white', boxShadow: `0 0 0 1px ${d.color}55`, flexShrink: 0 }} />
+            <span style={{ color: 'var(--text)', fontWeight: 600 }}>
+              {d.name.startsWith('Dr.') ? d.name : `Dr. ${d.name}`} ({d.avg ? `${d.avg}★` : '—'})
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Stars({ value, size = 14 }) {
   return (
     <span style={{ fontSize: size, letterSpacing: 1 }}>
@@ -32,6 +166,8 @@ export default function InstitutionDashboard() {
   const [banModal,     setBanModal]     = useState(null);
   const [banDays,      setBanDays]      = useState(30);
   const [search,       setSearch]       = useState('');
+  const [allRatings,      setAllRatings]      = useState([]);
+  const [doctorRatingMap, setDoctorRatingMap] = useState({});
 
   const showToast = (msg, ok = true) => {
     setToast(msg); setToastOk(ok);
@@ -53,6 +189,23 @@ export default function InstitutionDashboard() {
       setReports(rp.data);
       setStats(st.data);
       setAllDoctors(all.data);
+
+      // Fetch ratings for each approved doctor
+      const ratingResponses = await Promise.all(
+        dr.data.map((doc, i) =>
+          api(`/api/ratings/doctor/${doc.id}`)
+            .then((r) => ({ doctorId: doc.id, name: `${doc.firstName} ${doc.lastName}`, ratings: r.data.ratings || [], color: DOC_COLORS[i % DOC_COLORS.length] }))
+            .catch(() => ({ doctorId: doc.id, name: `${doc.firstName} ${doc.lastName}`, ratings: [], color: DOC_COLORS[i % DOC_COLORS.length] }))
+        )
+      );
+      const flat = [], docMap = {};
+      ratingResponses.forEach((d) => {
+        const avg = d.ratings.length ? (d.ratings.reduce((s, r) => s + r.stars, 0) / d.ratings.length).toFixed(1) : null;
+        docMap[d.doctorId] = { name: d.name, color: d.color, ratings: d.ratings, avg };
+        d.ratings.forEach((r) => flat.push({ stars: r.stars, doctorId: d.doctorId, color: d.color }));
+      });
+      setAllRatings(flat);
+      setDoctorRatingMap(docMap);
     } catch {}
     setLoading(false);
   }, []);
@@ -130,6 +283,9 @@ export default function InstitutionDashboard() {
             </div>
           )}
 
+          {/* KDE Rating Distribution */}
+          {!loading && <RatingKDE allRatings={allRatings} doctorRatingMap={doctorRatingMap} officialAvg={stats?.avgRating} />}
+
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '2px solid var(--border)', paddingBottom: 0 }}>
             {[
@@ -169,10 +325,10 @@ export default function InstitutionDashboard() {
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontSize: 18, fontWeight: 900, color: 'white', flexShrink: 0,
                         }}>
-                          {doc.firstName?.[0]}{doc.lastName?.[0]}
+                          {(doc.firstName?.startsWith('Dr.') ? doc.firstName.slice(4).trim() : doc.firstName)?.[0]}{doc.lastName?.[0]}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 800, fontSize: 15.5 }}>Dr. {doc.firstName} {doc.lastName}</div>
+                          <div style={{ fontWeight: 800, fontSize: 15.5 }}>{doc.firstName?.startsWith('Dr.') ? `${doc.firstName} ${doc.lastName}` : `Dr. ${doc.firstName} ${doc.lastName}`}</div>
                           <div style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600 }}>{doc.specialty ?? '—'}</div>
                           <div style={{ fontSize: 12, color: 'var(--muted)' }}>{doc.hospital ?? '—'}</div>
                         </div>

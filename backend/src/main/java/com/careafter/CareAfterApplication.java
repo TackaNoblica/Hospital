@@ -78,27 +78,48 @@ public class CareAfterApplication {
                 doctor3.setSpecialty("Internista — Specijalista pulmologije"); doctor3.setHospital("Klinika za pulmologiju, KBC Bezanijska kosa"); userRepo.save(doctor3);
             }
 
-            // Doktori iz drugacijih klinika
-            User doctorKardio = save(userRepo, "doctor4@careafter.local",
-                    new User(null, "Dr. Nenad", "Savic", "doctor4@careafter.local",
+            // Pulmolozi — razne klinike (privatne i drzavne)
+            User doctor4 = save(userRepo, "doctor4@careafter.local",
+                    new User(null, "Dr. Jelena", "Ristic", "doctor4@careafter.local",
                             enc.encode("doctor123"), Role.DOCTOR, true));
-            if (doctorKardio.getSpecialty() == null) {
-                doctorKardio.setSpecialty("Internista — Specijalista kardiologije"); doctorKardio.setHospital("Odeljenje kardiologije, KBC Zemun"); userRepo.save(doctorKardio);
-            }
+            doctor4.setSpecialty("Internista — Specijalista pulmologije");
+            doctor4.setHospital("Institut za plucne bolesti, Sremska Kamenica");
+            userRepo.save(doctor4);
 
-            User doctorNeur = save(userRepo, "doctor5@careafter.local",
-                    new User(null, "Dr. Sonja", "Vasic", "doctor5@careafter.local",
+            User doctor5 = save(userRepo, "doctor5@careafter.local",
+                    new User(null, "Dr. Stefan", "Obradovic", "doctor5@careafter.local",
                             enc.encode("doctor123"), Role.DOCTOR, true));
-            if (doctorNeur.getSpecialty() == null) {
-                doctorNeur.setSpecialty("Specijalista neurologije"); doctorNeur.setHospital("Institut za neurologiju i psihijatriju, Laza Lazarevic"); userRepo.save(doctorNeur);
-            }
+            doctor5.setSpecialty("Internista — Specijalista pulmologije");
+            doctor5.setHospital("BelMedic — Pulmologija i alergologija");
+            userRepo.save(doctor5);
 
-            User doctorHir = save(userRepo, "doctor6@careafter.local",
-                    new User(null, "Dr. Vojislav", "Milic", "doctor6@careafter.local",
+            User doctor6 = save(userRepo, "doctor6@careafter.local",
+                    new User(null, "Dr. Vesna", "Nikolic", "doctor6@careafter.local",
                             enc.encode("doctor123"), Role.DOCTOR, true));
-            if (doctorHir.getSpecialty() == null) {
-                doctorHir.setSpecialty("Specijalista opste hirurgije"); doctorHir.setHospital("Hirurska klinika, UKC Srbija"); userRepo.save(doctorHir);
-            }
+            doctor6.setSpecialty("Internista — Specijalista pulmologije");
+            doctor6.setHospital("KBC Zemun — Pulmolaska ambulanta");
+            userRepo.save(doctor6);
+
+            User doctor7 = save(userRepo, "doctor7@careafter.local",
+                    new User(null, "Dr. Milos", "Jankovic", "doctor7@careafter.local",
+                            enc.encode("doctor123"), Role.DOCTOR, true));
+            doctor7.setSpecialty("Internista — Specijalista pulmologije");
+            doctor7.setHospital("Pulmomed — Privatna pulmolaska klinika");
+            userRepo.save(doctor7);
+
+            User doctor8 = save(userRepo, "doctor8@careafter.local",
+                    new User(null, "Dr. Ana", "Davidovic", "doctor8@careafter.local",
+                            enc.encode("doctor123"), Role.DOCTOR, true));
+            doctor8.setSpecialty("Internista — Specijalista pulmologije");
+            doctor8.setHospital("Institut za plucne bolesti i TBC, Beograd");
+            userRepo.save(doctor8);
+
+            User doctor9 = save(userRepo, "doctor9@careafter.local",
+                    new User(null, "Dr. Bojan", "Lazarevic", "doctor9@careafter.local",
+                            enc.encode("doctor123"), Role.DOCTOR, true));
+            doctor9.setSpecialty("Internista — Specijalista pulmologije");
+            doctor9.setHospital("Medigroup — Pulmolaska dijagnostika");
+            userRepo.save(doctor9);
 
             // Pacijenti — plucna patologija
             User milicaU = save(userRepo, "patient@careafter.local",

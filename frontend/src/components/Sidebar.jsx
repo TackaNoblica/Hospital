@@ -165,19 +165,8 @@ export default function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <div className="logo-mark">
-          <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" width="22" height="22">
-            <rect x="5" y="10" width="18" height="16" rx="1.5" fill="white" fillOpacity="0.25" stroke="white" strokeWidth="1.4"/>
-            <rect x="2" y="14" width="5" height="12" rx="1" fill="white" fillOpacity="0.18" stroke="white" strokeWidth="1.2"/>
-            <rect x="21" y="14" width="5" height="12" rx="1" fill="white" fillOpacity="0.18" stroke="white" strokeWidth="1.2"/>
-            <rect x="12" y="3" width="4" height="10" rx="1.2" fill="white"/>
-            <rect x="9" y="6" width="10" height="4" rx="1.2" fill="white"/>
-            <rect x="11.5" y="19" width="5" height="7" rx="0.8" fill="white" fillOpacity="0.5" stroke="white" strokeWidth="1"/>
-            <rect x="7" y="14" width="3" height="2.5" rx="0.5" fill="white" fillOpacity="0.6"/>
-            <rect x="7" y="18" width="3" height="2.5" rx="0.5" fill="white" fillOpacity="0.6"/>
-            <rect x="18" y="14" width="3" height="2.5" rx="0.5" fill="white" fillOpacity="0.6"/>
-            <rect x="18" y="18" width="3" height="2.5" rx="0.5" fill="white" fillOpacity="0.6"/>
-          </svg>
+        <div className="logo-mark" style={{ background: 'transparent', boxShadow: 'none', padding: 0 }}>
+          <img src="/logo.png" alt="CareAfter logo" width="36" height="36" style={{ objectFit: 'contain' }} />
         </div>
         <div>
           <div className="logo-name">CareAfter</div>
